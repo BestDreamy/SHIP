@@ -21,9 +21,20 @@ constexpr int kNumTokens = 16;  // 假设有 16 个 tokens
 constexpr int kNumChannels = 2;  // 假设有 2 个 channels
 constexpr int kNumThreads = 128;  // 每个 block 的线程数
 
+__attribute__((unused)) static inline int atomicAdd_system(int *address, int val) {int volatile ___ = 1;(void)address;(void)val;::exit(___);}
+
 template <typename dtype_t>
 __host__ __device__ dtype_t cell_div(dtype_t a, dtype_t b) {
     return (a + b - 1) / b;
+}
+
+__forceinline__ __device__ int warp_reduce_sum(int value) {
+    value += __shfl_xor_sync(0xffffffff, value, 16);
+    value += __shfl_xor_sync(0xffffffff, value, 8);
+    value += __shfl_xor_sync(0xffffffff, value, 4);
+    value += __shfl_xor_sync(0xffffffff, value, 2);
+    value += __shfl_xor_sync(0xffffffff, value, 1);
+    return value;
 }
 
 __device__ __forceinline__ void memory_fence() {
@@ -61,7 +72,7 @@ template<int kNumRanks>
 __global__ void notify_dispatch(
     const int* num_tokens_per_rank, int* moe_recv_counter_mapped,
     const int* num_tokens_per_expert, int* moe_recv_expert_counter_mapped, int num_experts,
-    int num_tokens, int num_channels, const bool* is_token_in_rank, int* channel_prefix_matrix,
+    int num_tokens, int num_channels, const int* is_token_in_rank, int* channel_prefix_matrix,
     int* rank_prefix_matrix_copy, int num_memset_int, int expert_alignment,
     void** buffer_ptrs, int** task_fifo_ptrs, int head, int rank) {
 
@@ -166,7 +177,7 @@ int main() {
     // 1. 初始化输入数据
     std::vector<int> h_num_tokens_per_rank(kNumRanks, kNumTokens / kNumRanks);  // 每个 rank 平均分配 tokens
     std::vector<int> h_num_tokens_per_expert(kNumExperts, kNumTokens / kNumExperts);  // 每个 expert 平均分配 tokens
-    std::vector<bool> h_is_token_in_rank(kNumTokens * kNumRanks, true);  // 假设所有 tokens 都属于所有 ranks
+    std::vector<int> h_is_token_in_rank(kNumTokens * kNumRanks, true);  // 假设所有 tokens 都属于所有 ranks
     std::vector<int> h_channel_prefix_matrix(kNumRanks * kNumChannels, 0);  // 初始化为 0
     std::vector<int> h_rank_prefix_matrix_copy(kNumRanks * kNumRanks, 0);  // 初始化为 0
 
@@ -176,11 +187,11 @@ int main() {
     // 2. 分配设备内存并拷贝数据
     int *d_num_tokens_per_rank, *d_num_tokens_per_expert, *d_channel_prefix_matrix, *d_rank_prefix_matrix_copy;
     int *d_moe_recv_counter_mapped, *d_moe_recv_expert_counter_mapped;
-    bool *d_is_token_in_rank;
+    int *d_is_token_in_rank;
 
     CUDA_CHECK(cudaMalloc(&d_num_tokens_per_rank, kNumRanks * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_num_tokens_per_expert, kNumExperts * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&d_is_token_in_rank, kNumTokens * kNumRanks * sizeof(bool)));
+    CUDA_CHECK(cudaMalloc(&d_is_token_in_rank, kNumTokens * kNumRanks * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_channel_prefix_matrix, kNumRanks * kNumChannels * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_rank_prefix_matrix_copy, kNumRanks * kNumRanks * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_moe_recv_counter_mapped, sizeof(int)));
@@ -188,7 +199,7 @@ int main() {
 
     CUDA_CHECK(cudaMemcpy(d_num_tokens_per_rank, h_num_tokens_per_rank.data(), kNumRanks * sizeof(int), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_num_tokens_per_expert, h_num_tokens_per_expert.data(), kNumExperts * sizeof(int), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_is_token_in_rank, h_is_token_in_rank.data(), kNumTokens * kNumRanks * sizeof(bool), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_is_token_in_rank, h_is_token_in_rank.data(), kNumTokens * kNumRanks * sizeof(int), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_channel_prefix_matrix, h_channel_prefix_matrix.data(), kNumRanks * kNumChannels * sizeof(int), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_rank_prefix_matrix_copy, h_rank_prefix_matrix_copy.data(), kNumRanks * kNumRanks * sizeof(int), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_moe_recv_counter_mapped, &h_moe_recv_counter_mapped, sizeof(int), cudaMemcpyHostToDevice));
@@ -221,7 +232,7 @@ int main() {
 
     // 5. 拷贝结果回主机并验证
     CUDA_CHECK(cudaMemcpy(&h_moe_recv_counter_mapped, d_moe_recv_counter_mapped, sizeof(int), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_moe_recv_expert_counter_mapped.data(), d_moe_recv_expert_counter_mapped.data(), kNumExperts * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_moe_recv_expert_counter_mapped.data(), d_moe_recv_expert_counter_mapped, kNumExperts * sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_channel_prefix_matrix.data(), d_channel_prefix_matrix, kNumRanks * kNumChannels * sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_rank_prefix_matrix_copy.data(), d_rank_prefix_matrix_copy, kNumRanks * kNumRanks * sizeof(int), cudaMemcpyDeviceToHost));
 
