@@ -21,7 +21,8 @@ constexpr int kNumTokens = 16;  // 假设有 16 个 tokens
 constexpr int kNumChannels = 2;  // 假设有 2 个 channels
 constexpr int kNumThreads = 128;  // 每个 block 的线程数
 
-__attribute__((unused)) static inline int atomicAdd_system(int *address, int val) {int volatile ___ = 1;(void)address;(void)val;::exit(___);}
+// __attribute__((unused)) static inline int atomicAdd_system(int *address, int val) {int volatile ___ = 1;(void)address;(void)val;::exit(___);}
+// __attribute__((unused)) static inline int atomicSub_system(int *address, int val) {int volatile ___ = 1;(void)address;(void)val;::exit(___);}
 
 template <typename dtype_t>
 __host__ __device__ dtype_t cell_div(dtype_t a, dtype_t b) {
@@ -55,9 +56,9 @@ barrier_device(int **task_fifo_ptrs, int head, int rank, int tag = 0) {
     // EP_DEVICE_ASSERT(kNumRanks <= 32);
 
     if (thread_id < kNumRanks) {
-        atomicAdd_system(task_fifo_ptrs[rank] + head + thread_id, FINISHED_SUM_TAG);
+        // atomicAdd_system(task_fifo_ptrs[rank] + head + thread_id, FINISHED_SUM_TAG);
         memory_fence();
-        atomicSub_system(task_fifo_ptrs[thread_id] + head + rank, FINISHED_SUM_TAG);
+        // atomicSub_system(task_fifo_ptrs[thread_id] + head + rank, FINISHED_SUM_TAG);
     }
     // timeout_check<kNumRanks>(task_fifo_ptrs, head, rank, 0, tag);
 }
