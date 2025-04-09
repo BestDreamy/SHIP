@@ -7,6 +7,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../psrc
 from utils import MoEConfig, ProcessGroupInfo
 from utils import init_dist
 
+from Buffer import Buffer
+
 moe = MoEConfig(
     num_experts=8,
     experts_per_token=3,
@@ -19,15 +21,16 @@ def work(
     world_size: int,
     dp_size: int,
 ) -> None:
+    pgi = init_dist(rank, world_size)
     # rank = pgi.rank
     # local_rank = pgi.local_rank
     # world_size = pgi.world_size
-    # dp_rank = rank // dp_size
+    dp_rank = rank // dp_size
     # num_dp = world_size // dp_size
-    # assert torch.cuda.current_device() == local_rank
+    # assert torch.cuda.current_device() == rank
     # device = pgi.device
 
-    ata = AllToAll(
+    ata = Buffer (
         max_num_tokens=moe.max_num_tokens,
         num_experts=moe.num_experts,
         experts_per_token=moe.experts_per_token,
@@ -47,6 +50,9 @@ def work(
         ),
     )
 
+    print(f"rank: {rank}")
+
+"""
     # Generate the same test data on all ranks
     rng = torch.Generator()
     rng.manual_seed(123)
@@ -63,6 +69,7 @@ def work(
         for token_idx in range(rd.num_tokens):
             for expert_idx in rd.indices[token_idx]:
                 expert_token_from[expert_idx].append((i_rank, token_idx))
+"""
 
 if __name__ == '__main__':
     dp_size = 2

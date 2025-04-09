@@ -1,6 +1,6 @@
 import torch
 
-class AllToAll:
+class Buffer:
     def __init__(
         self,
         max_num_tokens: int,
@@ -21,6 +21,7 @@ class AllToAll:
         self.max_num_tokens = max_num_tokens
         self._has_scales = hidden_dim_scale_bytes > 0
 
+"""
         self._ptr = _ops.all_to_all_create(
             max_num_tokens,
             num_experts,
@@ -33,3 +34,4 @@ class AllToAll:
             hidden_dim_scale_bytes,
         )
         assert self._ptr != 0
+"""
