@@ -6,4 +6,4 @@
 !tests/
 !tests/**
 !.gitignore
-!.setup.py
+!setup.py
