@@ -1,0 +1,9 @@
+*
+!psrc/
+!psrc/**
+!csrc/
+!csrc/**
+!tests/
+!tests/**
+!.gitignore
+!.setup.py
