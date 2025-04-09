@@ -21,7 +21,7 @@ def init_dist(local_rank: int, num_local_ranks: int):
     torch.set_default_device('cuda')
     torch.cuda.set_device(local_rank)
 
-    # print("rank: {}, num_ranks: {}, group: {}".format(dist.get_rank(), dist.get_world_size(), list(range(num_local_ranks * num_nodes))))
+    print("rank: {}, num_ranks: {}, group: {}".format(dist.get_rank(), dist.get_world_size(), list(range(num_local_ranks * num_nodes))))
 
     return dist.get_rank(), dist.get_world_size(), dist.new_group(list(range(num_local_ranks * num_nodes)))
 
@@ -32,7 +32,7 @@ def test_loop(local_rank: int, num_local_ranks: int):
 
     # test_ll_compatibility, num_rdma_bytes = False, 0
 
-    deep_reduce.torchReduce(c, a, b, n)
+    # deep_reduce.torchReduce(c, a, b, n)
     # buffer = ep.Buffer(group, int(1e9), num_rdma_bytes, low_latency_mode=test_ll_compatibility,
     #                         num_qps_per_rank=(ll_num_experts // num_ranks if test_ll_compatibility else 1))
 

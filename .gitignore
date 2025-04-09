@@ -7,3 +7,4 @@
 !tests/**
 !.gitignore
 !setup.py
+__pycache__
