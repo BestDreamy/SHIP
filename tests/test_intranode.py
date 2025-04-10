@@ -83,7 +83,7 @@ def work(
         for token_idx in range(rd.num_tokens):
             indices = rd.indices[token_idx].tolist()
             weights = rd.weights[token_idx].tolist()
-            print("    x[%d] -> %s", token_idx, list(zip(indices, weights)))
+            print(f"    x[{token_idx}] -> {list(zip(indices, weights))}")
         for token_idx in range(rd.num_tokens):
             print("    x[%d]=%s", token_idx, _str_1d_tensor(rd.x[token_idx]))
         if rd.x_scale is not None:
