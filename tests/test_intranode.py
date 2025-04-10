@@ -1,7 +1,7 @@
 import sys
 import os
 import torch
-import logging
+# import logging
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../psrc')))
 
@@ -10,7 +10,7 @@ from utils import init_dist
 
 from Buffer import Buffer
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 moe = MoEConfig(
     num_experts=8,
@@ -19,13 +19,11 @@ moe = MoEConfig(
     max_num_tokens=10,
 )
 
-
 def _str_1d_tensor(t: torch.Tensor) -> str:
     sl = [f"{x:7.4f}" for x in t.tolist()]
     if len(sl) > 5:
         sl = sl[:5] + ["..."]
     return "[" + ", ".join(sl) + "]"
-
 
 def work(
     rank: int,
@@ -80,35 +78,28 @@ def work(
             for expert_idx in rd.indices[token_idx]:
                 expert_token_from[expert_idx].append((i_rank, token_idx))
 
-    # Print the test data
-    if rank == 0:
-        logger.debug("Rank Data:")
-        for i_rank, rd in enumerate(all_rank_data):
-            logger.debug("  DP Rank %d:", i_rank)
+    for i, rd in enumerate(all_rank_data):
+        print(f"  DP Rank {i}:")
+        for token_idx in range(rd.num_tokens):
+            indices = rd.indices[token_idx].tolist()
+            weights = rd.weights[token_idx].tolist()
+            print("    x[%d] -> %s", token_idx, list(zip(indices, weights)))
+        for token_idx in range(rd.num_tokens):
+            print("    x[%d]=%s", token_idx, _str_1d_tensor(rd.x[token_idx]))
+        if rd.x_scale is not None:
             for token_idx in range(rd.num_tokens):
-                indices = rd.indices[token_idx].tolist()
-                weights = rd.weights[token_idx].tolist()
-                logger.debug(
-                    "    x[%d] -> %s",
+                print(
+                    "    x_scale[%d]=%s",
                     token_idx,
-                    list(zip(indices, weights)),
+                    _str_1d_tensor(rd.x_scale[token_idx]),
                 )
-            for token_idx in range(rd.num_tokens):
-                logger.debug("    x[%d]=%s", token_idx, _str_1d_tensor(rd.x[token_idx]))
-            if rd.x_scale is not None:
-                for token_idx in range(rd.num_tokens):
-                    logger.debug(
-                        "    x_scale[%d]=%s",
-                        token_idx,
-                        _str_1d_tensor(rd.x_scale[token_idx]),
-                    )
-        for expert_idx in range(moe.num_experts):
-            logger.debug(
-                "  Expert %d: %d tokens, from: %s",
-                expert_idx,
-                len(expert_token_from[expert_idx]),
-                [f"r{r}t{t}" for r, t in expert_token_from[expert_idx]],
-            )
+    for expert_idx in range(moe.num_experts):
+        print(
+            "  Expert %d: %d tokens, from: %s",
+            expert_idx,
+            len(expert_token_from[expert_idx]),
+            [f"r{r}t{t}" for r, t in expert_token_from[expert_idx]],
+        )
 
 if __name__ == '__main__':
     dp_size = 2
