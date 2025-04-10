@@ -1,10 +1,11 @@
 import sys
 import os
 import torch
+import logging
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../psrc')))
 
-from utils import MoEConfig, ProcessGroupInfo
+from utils import MoEConfig, ProcessGroupInfo, RankTestData
 from utils import init_dist
 
 from Buffer import Buffer
@@ -26,7 +27,7 @@ def work(
     # local_rank = pgi.local_rank
     # world_size = pgi.world_size
     dp_rank = rank // dp_size
-    # num_dp = world_size // dp_size
+    num_dp = world_size // dp_size
     # assert torch.cuda.current_device() == rank
     # device = pgi.device
 
@@ -52,7 +53,6 @@ def work(
 
     print(f"rank: {rank}")
 
-"""
     # Generate the same test data on all ranks
     rng = torch.Generator()
     rng.manual_seed(123)
@@ -69,7 +69,36 @@ def work(
         for token_idx in range(rd.num_tokens):
             for expert_idx in rd.indices[token_idx]:
                 expert_token_from[expert_idx].append((i_rank, token_idx))
-"""
+
+    # Print the test data
+    if rank == 0:
+        logger.debug("Rank Data:")
+        for i_rank, rd in enumerate(all_rank_data):
+            logger.debug("  DP Rank %d:", i_rank)
+            for token_idx in range(rd.num_tokens):
+                indices = rd.indices[token_idx].tolist()
+                weights = rd.weights[token_idx].tolist()
+                logger.debug(
+                    "    x[%d] -> %s",
+                    token_idx,
+                    list(zip(indices, weights)),
+                )
+            for token_idx in range(rd.num_tokens):
+                logger.debug("    x[%d]=%s", token_idx, _str_1d_tensor(rd.x[token_idx]))
+            if rd.x_scale is not None:
+                for token_idx in range(rd.num_tokens):
+                    logger.debug(
+                        "    x_scale[%d]=%s",
+                        token_idx,
+                        _str_1d_tensor(rd.x_scale[token_idx]),
+                    )
+        for expert_idx in range(moe.num_experts):
+            logger.debug(
+                "  Expert %d: %d tokens, from: %s",
+                expert_idx,
+                len(expert_token_from[expert_idx]),
+                [f"r{r}t{t}" for r, t in expert_token_from[expert_idx]],
+            )
 
 if __name__ == '__main__':
     dp_size = 2
