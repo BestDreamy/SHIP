@@ -56,6 +56,7 @@ class RankTestData:
         self,
         cfg: MoEConfig,
         rng: torch.Generator,
+        use_max_tokens: bool,
     ) -> None:
         self.num_tokens = (
             int(torch.randint(1, cfg.max_num_tokens, [1], generator=rng).item())

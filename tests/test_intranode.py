@@ -10,12 +10,22 @@ from utils import init_dist
 
 from Buffer import Buffer
 
+logger = logging.getLogger(__name__)
+
 moe = MoEConfig(
     num_experts=8,
     experts_per_token=3,
     hidden_dim=512,
     max_num_tokens=10,
 )
+
+
+def _str_1d_tensor(t: torch.Tensor) -> str:
+    sl = [f"{x:7.4f}" for x in t.tolist()]
+    if len(sl) > 5:
+        sl = sl[:5] + ["..."]
+    return "[" + ", ".join(sl) + "]"
+
 
 def work(
     rank: int,
@@ -54,7 +64,7 @@ def work(
     print(f"rank: {rank}")
 
     # Generate the same test data on all ranks
-    rng = torch.Generator()
+    rng = torch.Generator(device='cuda')
     rng.manual_seed(123)
     all_rank_data = [
         RankTestData(moe, rng, use_max_tokens=False) for _ in range(num_dp)
