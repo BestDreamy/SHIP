@@ -95,12 +95,7 @@ def work(
                             _str_1d_tensor(rd.x_scale[token_idx]),
                         )
             for expert_idx in range(moe.num_experts):
-                print(
-                    "  Expert %d: %d tokens, from: %s",
-                    expert_idx,
-                    len(expert_token_from[expert_idx]),
-                    [f"r{r}t{t}" for r, t in expert_token_from[expert_idx]],
-                )
+                print(f"  Expert {expert_idx}: {len(expert_token_from[expert_idx])} tokens, from: [f"r{r}t{t}" for r, t in expert_token_from[expert_idx]] ")
 
 if __name__ == '__main__':
     dp_size = 2
