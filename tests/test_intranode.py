@@ -28,14 +28,12 @@ def _str_1d_tensor(t: torch.Tensor) -> str:
 def work(
     rank: int,
     world_size: int,
-    dp_size: int,
 ) -> None:
     pgi = init_dist(rank, world_size)
+    num_rank = world_size
     # rank = pgi.rank
     # local_rank = pgi.local_rank
     # world_size = pgi.world_size
-    dp_rank = rank // dp_size
-    num_dp = world_size // dp_size
     # assert torch.cuda.current_device() == rank
     # device = pgi.device
 
@@ -45,7 +43,6 @@ def work(
         experts_per_token=moe.experts_per_token,
         rank=rank,
         world_size=world_size,
-        dp_size=dp_size,
         hidden_dim=moe.hidden_dim,
         hidden_dim_bytes=moe.hidden_dim * moe.in_dtype.itemsize,
         hidden_dim_scale_bytes=(
@@ -63,9 +60,9 @@ def work(
     rng = torch.Generator(device='cuda')
     rng.manual_seed(123)
     all_rank_data = [
-        RankTestData(moe, rng, use_max_tokens=False) for _ in range(num_dp)
+        RankTestData(moe, rng, use_max_tokens=False) for _ in range(num_rank)
     ]
-    rank_data = all_rank_data[dp_rank]
+    rank_data = all_rank_data[rank]
 
     # Collect info by expert
     expert_token_from: list[list[tuple[int, int]]] = [
@@ -76,6 +73,7 @@ def work(
             for expert_idx in rd.indices[token_idx]:
                 expert_token_from[expert_idx].append((i_rank, token_idx))
 
+"""
     for k in range(world_size):
         if k == rank:
             print(f"rank: {rank}")
@@ -99,8 +97,9 @@ def work(
                 print(
                     f"  Expert {expert_idx}: {len(expert_token_from[expert_idx])} tokens, from: {chars}"
                 )
+"""
+
 
 if __name__ == '__main__':
-    dp_size = 2
     world_size = 8
-    torch.multiprocessing.spawn(work, args=(world_size, dp_size), nprocs=world_size)
+    torch.multiprocessing.spawn(work, args=(world_size, ), nprocs=world_size)
