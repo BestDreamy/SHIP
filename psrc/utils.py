@@ -22,7 +22,7 @@ class ProcessGroupInfo:
     rank: int
     # node_rank: int
     # local_rank: int
-    # device: torch.device
+    device: torch.device
 
 
 def init_dist(local_rank: int, num_local_ranks: int):
@@ -40,12 +40,12 @@ def init_dist(local_rank: int, num_local_ranks: int):
         rank=node_rank * num_local_ranks + local_rank
     )
     torch.set_default_dtype(torch.bfloat16)
-    torch.set_default_device('cuda')
-    torch.cuda.set_device(local_rank)
+    device = torch.device('cuda', local_rank)
 
     pgi = ProcessGroupInfo(
             world_size = dist.get_world_size(),
-            rank = dist.get_rank()
+            rank = dist.get_rank(),
+            device = device,
     )
 
     return pgi

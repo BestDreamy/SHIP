@@ -35,7 +35,7 @@ def work(
     # local_rank = pgi.local_rank
     # world_size = pgi.world_size
     # assert torch.cuda.current_device() == rank
-    # device = pgi.device
+    device = pgi.device
 
     ata = Buffer (
         max_num_tokens=moe.max_num_tokens,
@@ -44,16 +44,16 @@ def work(
         rank=rank,
         world_size=world_size,
         hidden_dim=moe.hidden_dim,
-        hidden_dim_bytes=moe.hidden_dim * moe.in_dtype.itemsize,
-        hidden_dim_scale_bytes=(
-            0
-            if moe.in_dtype.itemsize != 1
-            else (
-                (moe.hidden_dim + moe.block_size - 1)
-                // moe.block_size
-                * torch.float32.itemsize
-            )
-        ),
+        # hidden_dim_bytes=moe.hidden_dim * moe.in_dtype.itemsize,
+        # hidden_dim_scale_bytes=(
+        #     0
+        #     if moe.in_dtype.itemsize != 1
+        #     else (
+        #         (moe.hidden_dim + moe.block_size - 1)
+        #         // moe.block_size
+        #         * torch.float32.itemsize
+        #     )
+        # ),
     )
 
     # Generate the same test data on all ranks
@@ -73,7 +73,7 @@ def work(
             for expert_idx in rd.indices[token_idx]:
                 expert_token_from[expert_idx].append((i_rank, token_idx))
 
-"""
+    """
     for k in range(world_size):
         if k == rank:
             print(f"rank: {rank}")
@@ -97,7 +97,26 @@ def work(
                 print(
                     f"  Expert {expert_idx}: {len(expert_token_from[expert_idx])} tokens, from: {chars}"
                 )
-"""
+    """
+
+    num_local_experts = moe.num_experts // world_size
+    expert_num_tokens = torch.empty(
+        num_local_experts,
+        dtype=torch.int32,
+        device=device,
+    )
+    expert_x = torch.empty(
+        (num_local_experts, moe.max_num_tokens * num_dp, moe.hidden_dim),
+        dtype=moe.in_dtype,
+        device=device,
+    )
+
+    ata.dispatch(
+        out_expert_num_tokens=expert_num_tokens,
+        out_expert_x=expert_x,
+        tokens=rank_data.x.to(device),
+        indices=rank_data.indices.to(device).to(torch.uint32),
+    )
 
 
 if __name__ == '__main__':
