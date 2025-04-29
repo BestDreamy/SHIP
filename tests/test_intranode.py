@@ -3,12 +3,10 @@ import os
 import torch
 # import logging
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../psrc')))
+from ..psrc.utils import MoEConfig, ProcessGroupInfo, RankTestData
+from ..psrc.utils import init_dist
 
-from utils import MoEConfig, ProcessGroupInfo, RankTestData
-from utils import init_dist
-
-from Buffer import Buffer
+from ..psrc.Buffer import Buffer
 
 # logger = logging.getLogger(__name__)
 
