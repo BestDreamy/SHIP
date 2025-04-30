@@ -1,21 +1,79 @@
 #include "intranode.h"
+#include <__clang_cuda_builtin_vars.h>
 #include <cstdint>
+#include <math.h>
 
 using namespace ship;
 
+template <bool isSend, bool isRecv>
+__global__ void dispatchKernel (
+	const uint32_t &rank,
+	const uint32_t &localTokens,
+	const uint32_t &numLocalExperts,
+	const uint32_t &expertsPerToken,
+	const uint32_t &worldSize,
+	const uint32_t &numExperts,
+	uint32_t *numTokensBuffer,
+
+	uint32_t *tokens,
+	uint32_t tokenElemStride,
+	uint32_t *indices,
+	uint32_t indexElemStride,
+	uint32_t indexRowStride
+) {
+	const unsigned WARP_SIZE = 32;
+	const unsigned NUM_WARPS = blockDim.x / WARP_SIZE;
+	const unsigned blockId = blockIdx.x;
+	const unsigned warpId = threadIdx.x / WARP_SIZE;
+	const unsigned laneId = threadIdx.x % WARP_SIZE;
+
+	if constexpr (isSend) {
+		if (warpId == NUM_WARPS - 1) {
+			for (int dstExpert = blockId; dstExpert < numExperts; dstExpert += gridDim.x) {
+				const uint32_t dstRank = dstExpert / numLocalExperts;
+				const uint32_t dstLocalExpert = dstExpert % numLocalExperts;
+
+				unsigned dstExpertCount = 0;
+				for (int i = laneId; i < localTokens * expertsPerToken; i += WARP_SIZE) {
+					unsigned expert = __ldg(indices + i);
+					if (expert == dstLocalExpert) {
+						dstExpertCount++;
+					}
+				}
+
+				if (laneId == 0) {
+					unsigned dstExpertCountSum = device::warp_sum(dstExpertCount);
+					nvshmemx_signal_op(
+						numTokensBuffer + dstRank,
+						dstExpertCountSum,
+						NVSHMEMX_SIGNAL_SET,
+						dstRank
+					);
+				}
+			}
+		}
+	}
+}
+
 void AllToAllIntraNode::dispatch (
-	const Stride1D<uint32_t> &tokens_d,
-	const Strided2D<uint32_t> &indices_d
+	Stride1D<uint32_t> &tokens_d,
+	Stride2D<uint32_t> &indices_d
 ) {
 	constexpr unsigned NUM_WRAPS = 10;
 	constexpr unsigned numThreadsperBlock = 32 * NUM_WRAPS;
-	constexpr unsigned numBlocks = 132;
+	constexpr unsigned numBlocks = min((uint32_t)132, numExperts);
 
 	dim3 dimGrid(numBlocks);
 	dim3 dimBlock(numThreadsperBlock);
 
 	void *args[] = {
-		&numTokensBuffer,
+		rank,
+		localTokens,
+		numLocalExperts,
+		expertsPerToken,
+		world_size,
+		numExperts,
+		numTokensBuffer,
 		tokens_d.data,
       	tokens_d.strideElem,
 		indices_d.data,
@@ -23,5 +81,10 @@ void AllToAllIntraNode::dispatch (
 		indices_d.strideRow
 	};
 
-	dispatchKernel<>
+	cudaLaunchCooperativeKernel(
+        (void *)&dispatchKernel<true, true>,
+        dimGrid,
+        dimBlock,
+        args
+    )
 }
