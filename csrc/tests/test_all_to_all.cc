@@ -10,6 +10,7 @@
 #include <cstdint>
 #include "../include/buffer.h"
 #include "../all2all/intranode.h"
+#include <assert.h>
 
 using namespace ship;
 
@@ -24,11 +25,13 @@ void testDispatch(
 ) {
     std::vector<uint32_t> tokens_h(localTokens * hiddenDim, rank); // All elements initialized to rank
     std::vector<uint32_t> indices_h(localTokens * expertsPerToken, 0);
-    uint32_t numLocalExperts = ceil_div(numExperts, world_size);
+    uint32_t numLocalExperts = numExperts / world_size;
+    assert(numExperts % world_size == 0);
     for (int i = 0; i < localTokens; i ++) {
         // For each token, assign it to other rank
         for (int j = 0; j < expertsPerToken; j ++) {
             indices_h[i * expertsPerToken + j] = (++ numLocalExperts) % numExperts;
+            std::cout << indices_h[i * expertsPerToken + j] << "\n";
         }
     }
 
@@ -36,17 +39,16 @@ void testDispatch(
     DeviceBuffer<uint32_t> tokens_d(tokens_h);
     DeviceBuffer<uint32_t> indices_d(indices_h);
 
-    const uint32_t hiddenDimBytes = hiddenDim * sizeof(T);
+    const uint32_t hiddenDimBytes = hiddenDim * sizeof(uint32_t);
 
-    AllToAllIntranode allToAllIntranode(
+    AllToAllIntraNode allToAllIntranode(
         rank,
         world_size,
         localTokens,
         hiddenDim,
         numExperts,
-        expertsPerToken,
+        expertsPerToken
         // localTokens * world_size, // maxNumTokens
-        ceil_div(numExperts, world_size) // numLocalExperts
     );
 
     allToAllIntranode.dispatch(
