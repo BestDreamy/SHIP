@@ -9,66 +9,51 @@
 #include <vector>
 #include <cstdint>
 #include "../include/buffer.h"
+#include "../all2all/intranode.h"
 
 using namespace ship;
 
-template <typename T>
 void testDispatch(
     // cudaStream_t stream,
     unsigned rank,
     unsigned world_size,
-    size_t localTokens = 1,
-    size_t hiddenDim = 16,
-    size_t numExperts = 8,
-    size_t expertsPerToken = 2
+    uint32_t localTokens = 4,
+    uint32_t hiddenDim = 16,
+    uint32_t numExperts = 8,
+    uint32_t expertsPerToken = 2
 ) {
-  std::vector<T> tokens_h(localTokens * hiddenDim, rank); // All elements initialized to rank
-  std::vector<uint32_t> indices_h(localTokens * expertsPerToken, 0); // All routed to expert 0
+    std::vector<uint32_t> tokens_h(localTokens * hiddenDim, rank); // All elements initialized to rank
+    std::vector<uint32_t> indices_h(localTokens * expertsPerToken, 0);
+    uint32_t numLocalExperts = ceil_div(numExperts, world_size);
+    for (int i = 0; i < localTokens; i ++) {
+        // For each token, assign it to other rank
+        for (int j = 0; j < expertsPerToken; j ++) {
+            indices_h[i * expertsPerToken + j] = (++ numLocalExperts) % numExperts;
+        }
+    }
 
-  // Device buffers
-  DeviceBuffer<T> tokens_d(tokens_h);
-  DeviceBuffer<uint32_t> indices_d(indices_h);
+    // Device buffers
+    DeviceBuffer<uint32_t> tokens_d(tokens_h);
+    DeviceBuffer<uint32_t> indices_d(indices_h);
 
-  const size_t hiddenDimBytes = hiddenDim * sizeof(T);
+    const uint32_t hiddenDimBytes = hiddenDim * sizeof(T);
 
-  
+    AllToAllIntranode allToAllIntranode(
+        rank,
+        world_size,
+        localTokens,
+        hiddenDim,
+        numExperts,
+        expertsPerToken,
+        // localTokens * world_size, // maxNumTokens
+        ceil_div(numExperts, world_size) // numLocalExperts
+    );
 
-  // Initialize the kernel
-  // Kernel kernel(
-  //     numTokens,
-  //     numExperts,
-  //     expertsPerToken,
-  //     0, // epRank
-  //     1, // epSize
-  //     1, // dpSize
-  //     hiddenDim,
-  //     hiddenDimBytes,
-  //     hiddenDimBytes
-  // );
+    allToAllIntranode.dispatch(
+        Stride1D<uint32_t>(tokens_d, hiddenDim),
+        Stride2D<uint32_t>(indices_d, 1, expertsPerToken)
+    );
 
-  // // Dispatch
-  // kernel.dispatch(
-  //     Strided2D<std::byte>(outputDevice, hiddenDimBytes, hiddenDimBytes * numTokens),
-  //     Strided1D<std::byte>(inputDevice, hiddenDimBytes),
-  //     Strided2D<uint32_t>(indicesDevice, 1, expertsPerToken),
-  //     numTokens,
-  //     nullptr,
-  //     SplitMode::NONE,
-  //     stream
-  // );
-
-  // Copy the output back to host·
-  // HostBuffer<T> outputHost(outputDevice);
-
-  // // Print the output for verification
-  // std::cout << "Dispatch output:" << std::endl;
-  // for (size_t i = 0; i < numExperts; ++i) {
-  //   std::cout << "Expert " << i << ": ";
-  //   for (size_t j = 0; j < hiddenDim; ++j) {
-  //     std::cout << outputHost[i * hiddenDim + j] << " ";
-  //   }
-  //   std::cout << std::endl;
-  // }
 }
 
 int main(int argc, char **argv) {
@@ -80,7 +65,7 @@ int main(int argc, char **argv) {
     int device = my_pe % 8;
     cudaSetDevice(device);
 
-    testDispatch<int32_t>(my_pe, n_pes);
+    testDispatch(my_pe, n_pes);
 
     nvshmem_finalize();
 

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <sys/types.h>
 #include <vector>
+#include <cuda_runtime.h>
 
 namespace ship {
 
@@ -20,6 +21,8 @@ template <typename T> struct HostBuffer {
         cudaMallocHost(&data, size * sizeof(T));
         cudaMemcpy(data, a.data(), size * sizeof(T), cudaMemcpyHostToDevice);
     }
+
+    const T *get() const { return data; }
 };
 
 // Device Buffer class
@@ -32,7 +35,60 @@ template <typename T> struct DeviceBuffer {
         cudaMalloc(&data, size * sizeof(T));
         cudaMemcpy(data, a.data(), size * sizeof(T), cudaMemcpyHostToDevice);
     }
+
+    const T *get() const { return data; }
 };
+
+template <typename T> struct Strided1D {
+    T *data;
+    size_t strideElem;
+  
+    template <typename S>
+    Strided1D(DeviceBuffer<S> &data, size_t strideElem)
+        : data(reinterpret_cast<T *>(data.get())),
+          strideElem(strideElem) {}
+  
+    Strided1D(T *data, size_t strideElem)
+        : data(data),
+          strideElem(strideElem) {}
+  };
+  
+  template <typename T> struct Strided2D {
+    T *data;
+    size_t strideElem;
+    size_t strideRow;
+  
+    template <typename S>
+    Strided2D(DeviceBuffer<S> &data, size_t strideElem, size_t strideRow)
+        : data(reinterpret_cast<T *>(data.get())),
+          strideElem(strideElem),
+          strideRow(strideRow) {}
+  
+    Strided2D(T *data, size_t strideElem, size_t strideRow)
+        : data(data),
+          strideElem(strideElem),
+          strideRow(strideRow) {}
+  };
+  
+  template <typename T> struct Strided3D {
+    T *data;
+    size_t strideElem;
+    size_t strideRow;
+    size_t strideCol;
+  
+    template <typename S>
+    Strided3D(DeviceBuffer<S> &data, size_t strideElem, size_t strideRow, size_t strideCol)
+        : data(reinterpret_cast<T *>(data.get())),
+          strideElem(strideElem),
+          strideRow(strideRow),
+          strideCol(strideCol) {}
+  
+    Strided3D(T *data, size_t strideElem, size_t strideRow, size_t strideCol)
+        : data(data),
+          strideElem(strideElem),
+          strideRow(strideRow),
+          strideCol(strideCol) {}
+  };
 
 // Host Buffer class
 // template <typename T> class HostBuffer final {
