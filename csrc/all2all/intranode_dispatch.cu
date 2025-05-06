@@ -1,7 +1,8 @@
 #include "intranode.h"
-#include <__clang_cuda_builtin_vars.h>
 #include <cstdint>
 #include <math.h>
+#include <stdio.h>
+#include "../include/cuda_utils.h"
 
 using namespace ship;
 
@@ -13,7 +14,7 @@ __global__ void dispatchKernel (
 	const uint32_t &expertsPerToken,
 	const uint32_t &worldSize,
 	const uint32_t &numExperts,
-	uint32_t *numTokensBuffer,
+	uint64_t *numTokensBuffer,
 
 	uint32_t *tokens,
 	uint32_t tokenElemStride,
@@ -41,44 +42,44 @@ __global__ void dispatchKernel (
 					}
 				}
 
-				if (laneId == 0) {
-					unsigned dstExpertCountSum = device::warp_sum(dstExpertCount);
-					nvshmemx_signal_op(
-						numTokensBuffer + dstRank,
-						dstExpertCountSum,
-						NVSHMEMX_SIGNAL_SET,
-						dstRank
-					);
-				}
+				// if (laneId == 0) {
+				// 	unsigned dstExpertCountSum = device::warp_sum(dstExpertCount);
+				// 	nvshmemx_signal_op(
+				// 		numTokensBuffer + dstRank,
+				// 		dstExpertCountSum,
+				// 		NVSHMEM_SIGNAL_SET,
+				// 		dstRank
+				// 	);
+				// }
 			}
 		}
 	}
 }
 
 void AllToAllIntraNode::dispatch (
-	Stride1D<uint32_t> &tokens_d,
-	Stride2D<uint32_t> &indices_d
+	const Stride1D<uint32_t> &tokens_d,
+	const Stride2D<uint32_t> &indices_d
 ) {
 	constexpr unsigned NUM_WRAPS = 10;
 	constexpr unsigned numThreadsperBlock = 32 * NUM_WRAPS;
-	constexpr unsigned numBlocks = min((uint32_t)132, numExperts);
+	const unsigned numBlocks = std::min((uint32_t)132, numExperts);
 
 	dim3 dimGrid(numBlocks);
 	dim3 dimBlock(numThreadsperBlock);
 
 	void *args[] = {
-		rank,
-		localTokens,
-		numLocalExperts,
-		expertsPerToken,
-		world_size,
-		numExperts,
+		const_cast<uint32_t*>(&rank),
+		const_cast<uint32_t*>(&localTokens),
+		const_cast<uint32_t*>(&numLocalExperts),
+		const_cast<uint32_t*>(&expertsPerToken),
+		const_cast<uint32_t*>(&world_size),
+		const_cast<uint32_t*>(&numExperts),
 		numTokensBuffer,
-		tokens_d.data,
-      	tokens_d.strideElem,
-		indices_d.data,
-      	indices_d.strideElem,
-		indices_d.strideRow
+		const_cast<uint32_t*>(tokens_d.data),
+		const_cast<size_t*>(&tokens_d.strideElem),
+		const_cast<uint32_t*>(indices_d.data),
+		const_cast<size_t*>(&indices_d.strideElem),
+		const_cast<size_t*>(&indices_d.strideRow)
 	};
 
 	cudaLaunchCooperativeKernel(
@@ -86,5 +87,15 @@ void AllToAllIntraNode::dispatch (
         dimGrid,
         dimBlock,
         args
-    )
+    );
+
+	printf("[Kernel Args]\n"
+		"rank=%u\n"
+		"localTokens=%u\n" 
+		"numLocalExperts=%u\n"
+		"expertsPerToken=%u\n"
+		"worldSize=%u\n"
+		"numExperts=%u\n",
+		rank, localTokens, numLocalExperts, expertsPerToken, world_size, numExperts);
+
 }

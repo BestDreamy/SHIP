@@ -1,6 +1,7 @@
 #ifndef SHIP_BUFFER_H
 #define SHIP_BUFFER_H
 
+#include <cerrno>
 #include <cstdint>
 #include <sys/types.h>
 #include <vector>
@@ -23,6 +24,7 @@ template <typename T> struct HostBuffer {
     }
 
     const T *get() const { return data; }
+    T *get() { return data; }
 };
 
 // Device Buffer class
@@ -37,6 +39,7 @@ template <typename T> struct DeviceBuffer {
     }
 
     const T *get() const { return data; }
+    T *get() { return data; }
 };
 
 template <typename T> struct Stride1D {
@@ -44,7 +47,7 @@ template <typename T> struct Stride1D {
     size_t strideElem;
   
     template <typename S>
-    Stride1D(DeviceBuffer<S> data, size_t strideElem)
+    Stride1D(DeviceBuffer<S> &data, size_t strideElem)
         : data(reinterpret_cast<T *>(data.get())),
           strideElem(strideElem) {}
   
@@ -59,7 +62,7 @@ template <typename T> struct Stride1D {
     size_t strideRow;
   
     template <typename S>
-    Stride2D(DeviceBuffer<S> data, size_t strideElem, size_t strideRow)
+    Stride2D(DeviceBuffer<S> &data, size_t strideElem, size_t strideRow)
         : data(reinterpret_cast<T *>(data.get())),
           strideElem(strideElem),
           strideRow(strideRow) {}
