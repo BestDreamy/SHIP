@@ -1,7 +1,7 @@
 #ifndef CUDA_UTILS_H
 #define CUDA_UTILS_H
 
-namespace pplx {
+namespace ship {
     namespace device {
     __forceinline__ __device__ unsigned warp_sum(unsigned value) {
       value += __shfl_xor_sync(0xffffffff, value, 16);
