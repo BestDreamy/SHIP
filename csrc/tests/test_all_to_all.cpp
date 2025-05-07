@@ -1,16 +1,15 @@
 #include <nvshmem.h>
 #include <nvshmemx.h>
 #include <cuda.h>
-#include <iostream>
 
 #define WORLD_SIZE 8
 
 #include <cuda.h>
-#include <vector>
 #include <cstdint>
 #include "../include/buffer.h"
 #include "../all2all/intranode.h"
 #include <assert.h>
+#include "../include/api.h"
 
 using namespace ship;
 
@@ -27,12 +26,21 @@ void testDispatch(
     std::vector<uint32_t> indices_h(localTokens * expertsPerToken, 0);
     uint32_t numLocalExperts = numExperts / world_size;
     assert(numExperts % world_size == 0);
+
+    if (rank == 0) {
+        std::cout << "Total ranks: " << world_size << "\n";
+        std::cout << "Each rank will transfer tokens num: " << localTokens << "\n";
+        std::cout << "Each rank have experts num: " << numLocalExperts << "\n";
+        std::cout << "Each token have experts num: " << expertsPerToken << "\n";
+    }
     for (int i = 0; i < localTokens; i ++) {
         // For each token, assign it to other rank
         for (int j = 0; j < expertsPerToken; j ++) {
             indices_h[i * expertsPerToken + j] = (++ numLocalExperts) % numExperts;
-            std::cout << indices_h[i * expertsPerToken + j] << "\n";
         }
+    }
+    if (rank == 0) {
+        print_transmit_information(tokens_h, indices_h, localTokens, hiddenDim, expertsPerToken);
     }
 
     // Device buffers

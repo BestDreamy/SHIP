@@ -5,6 +5,9 @@
 !csrc/**
 !tests/
 !tests/**
+!docs/
+!docs/**
+!README.md
 !.gitignore
 !setup.py
 __pycache__

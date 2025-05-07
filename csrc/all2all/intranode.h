@@ -6,6 +6,15 @@
 #include <nvshmem.h>
 #include <cuda_runtime.h>
 
+namespace {
+    template <typename T> T *mallocZeroBuffer(size_t size) {
+      T *ptr;
+      cudaMalloc(&ptr, size * sizeof(T));
+      cudaMemset(ptr, 0, size * sizeof(T));
+      return ptr;
+    }
+} // namespace
+
 namespace ship {
     enum {
         SEND,
@@ -54,7 +63,6 @@ namespace ship {
 	        const Stride2D<uint32_t> &indices_d
         );
     };
-
 }
 
 #endif // SHIP_uint32_tRANODE_H

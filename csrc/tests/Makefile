@@ -1,9 +1,9 @@
 # all:
-# 	nvcc -x cu -rdc=true -ccbin g++ -gencode=${NVCC_GENCODE} \
-# 	-I ${NVSHMEM_HOME}/include \
-# 	test_all_to_all.cc -o test_all_to_all \
-# 	-L ${NVSHMEM_HOME}/lib \
-# 	-lnvshmem -lnvidia-ml -lcuda -lcudart
+# nvcc -x cu -rdc=true -ccbin g++ -gencode=${NVCC_GENCODE} \
+# -I ${NVSHMEM_HOME}/include \
+# test_all_to_all.cc -o test_all_to_all \
+# -L ${NVSHMEM_HOME}/lib \
+# -lnvshmem -lnvidia-ml -lcuda -lcudart
 
 # run:
 # 	nvshmrun -np 4 ./test_all_to_all
@@ -14,17 +14,17 @@ NVCC := nvcc
 NVCC_GENCODE ?= arch=compute_90,code=sm_90a
 
 SRC_DIR := ..
-INC_DIR := ../include
+INC_DIR := $(addprefix -I, $(abspath ../all2all) \
+                           $(abspath ../include))
 BUILD_DIR := ../build
 
-CU_SRCS := $(SRC_DIR)/all2all/intranode_dispatch.cu
-# CPP_SRCS := $(SRC_DIR)/bind.cpp
-TEST_SRCS := test_all_to_all.cc
+CU_SRCS := $(shell find $(abspath $(SRC_DIR)) -name "*.cu")
+CPP_SRCS := $(shell find $(abspath $(SRC_DIR)) -name "*.cpp")
 
 CU_OBJS := $(patsubst $(SRC_DIR)/%.cu,$(BUILD_DIR)/%.cu.o,$(CU_SRCS))
-# CPP_OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.cpp.o,$(CPP_SRCS))
+CPP_OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.cpp.o,$(CPP_SRCS))
 
-CFLAGS := -I$(INC_DIR) -I${NVSHMEM_HOME}/include -I../all2all
+CFLAGS := -I$(INC_DIR) -I${NVSHMEM_HOME}/include
 NVCC_FLAGS := -x cu -rdc=true -ccbin $(CC) -gencode=$(NVCC_GENCODE)
 LDFLAGS := -L${NVSHMEM_HOME}/lib -lnvshmem -lnvidia-ml -lcuda -lcudart
 
@@ -40,7 +40,7 @@ $(BUILD_DIR)/%.cu.o: $(SRC_DIR)/%.cu
 $(BUILD_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp
 	$(CC) $(CFLAGS) -c $< -o $@
 
-test_all_to_all: $(CU_OBJS) $(CPP_OBJS) $(TEST_SRCS)
+test_all_to_all: $(CU_OBJS) $(CPP_OBJS)
 	$(NVCC) $(NVCC_FLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 run:
