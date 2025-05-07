@@ -9,9 +9,6 @@
 
 namespace ship {
 
-template <typename T> class HostBuffer;
-template <typename T> class DeviceBuffer;
-
 // Host Buffer class
 template <typename T> struct HostBuffer {
     uint32_t size;

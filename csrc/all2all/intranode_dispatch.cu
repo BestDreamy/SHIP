@@ -42,15 +42,15 @@ __global__ void dispatchKernel (
 					}
 				}
 
-				// if (laneId == 0) {
-				// 	unsigned dstExpertCountSum = device::warp_sum(dstExpertCount);
-				// 	nvshmemx_signal_op(
-				// 		numTokensBuffer + dstRank,
-				// 		dstExpertCountSum,
-				// 		NVSHMEM_SIGNAL_SET,
-				// 		dstRank
-				// 	);
-				// }
+				if (laneId == 0) {
+					unsigned dstExpertCountSum = device::warp_sum(dstExpertCount);
+					nvshmemx_signal_op(
+						numTokensBuffer + dstRank,
+						dstExpertCountSum,
+						NVSHMEM_SIGNAL_SET,
+						dstRank
+					);
+				}
 			}
 		}
 	}
@@ -74,10 +74,10 @@ void AllToAllIntraNode::dispatch (
 		const_cast<uint32_t*>(&expertsPerToken),
 		const_cast<uint32_t*>(&world_size),
 		const_cast<uint32_t*>(&numExperts),
-		numTokensBuffer,
-		const_cast<uint32_t*>(tokens_d.data),
+		&numTokensBuffer,
+		const_cast<uint32_t**>(&tokens_d.data),
 		const_cast<size_t*>(&tokens_d.strideElem),
-		const_cast<uint32_t*>(indices_d.data),
+		const_cast<uint32_t**>(&indices_d.data),
 		const_cast<size_t*>(&indices_d.strideElem),
 		const_cast<size_t*>(&indices_d.strideRow)
 	};
@@ -89,13 +89,13 @@ void AllToAllIntraNode::dispatch (
         args
     );
 
-	printf("[Kernel Args]\n"
-		"rank=%u\n"
-		"localTokens=%u\n" 
-		"numLocalExperts=%u\n"
-		"expertsPerToken=%u\n"
-		"worldSize=%u\n"
-		"numExperts=%u\n",
-		rank, localTokens, numLocalExperts, expertsPerToken, world_size, numExperts);
+	// printf("[Kernel Args]\n"
+	// 	"rank=%u\n"
+	// 	"localTokens=%u\n" 
+	// 	"numLocalExperts=%u\n"
+	// 	"expertsPerToken=%u\n"
+	// 	"worldSize=%u\n"
+	// 	"numExperts=%u\n",
+	// 	rank, localTokens, numLocalExperts, expertsPerToken, world_size, numExperts);
 
 }
