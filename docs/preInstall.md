@@ -119,7 +119,7 @@ ninja install
 # make install
 ```
 ```
-export NVSHMEM_HOME=/opt/nvshmem-3.2.5/
+export NVSHMEM_HOME=/opt/nvshmem-3.2.5
 export LD_LIBRARY_PATH="${NVSHMEM_HOME}/lib:$LD_LIBRARY_PATH"
 export PATH="${NVSHMEM_HOME}/bin:$PATH"
 
@@ -127,7 +127,7 @@ export PATH="${NVSHMEM_HOME}/bin:$PATH"
 export NVSHMEM_REMOTE_TRANSPORT=none
 
 # For nvshmrun
-export HYDRA_HOME=/opt/hydra/
+export HYDRA_HOME=/opt/hydra
 export PATH="${HYDRA_HOME}/bin:$PATH"
 export NVCC_GENCODE="arch=compute_90,code=sm_90a"
 ```

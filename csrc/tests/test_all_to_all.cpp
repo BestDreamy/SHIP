@@ -20,7 +20,8 @@ void testDispatch(
     uint32_t localTokens = 4,
     uint32_t hiddenDim = 16,
     uint32_t numExperts = 8,
-    uint32_t expertsPerToken = 2
+    uint32_t expertsPerToken = 3,
+    uint32_t maxNumTokens = 10
 ) {
     std::vector<uint32_t> tokens_h(localTokens * hiddenDim, rank); // All elements initialized to rank
     std::vector<uint32_t> indices_h(localTokens * expertsPerToken, 0);
@@ -36,12 +37,20 @@ void testDispatch(
     for (int i = 0; i < localTokens; i ++) {
         // For each token, assign it to other rank
         for (int j = 0; j < expertsPerToken; j ++) {
-            indices_h[i * expertsPerToken + j] = (++ numLocalExperts) % numExperts;
+            // indices_h[i * expertsPerToken + j] = (++ numLocalExperts) % numExperts;
+            indices_h[i * expertsPerToken + j] = j;
+        }
+    }
+    for (int i = 0; i < localTokens; i ++) {
+        for (int j = 1; j < expertsPerToken; j ++) {
+            Assert(indices_h[i * expertsPerToken] != indices_h[i * expertsPerToken + j], "The same token should not be assigned to the same expert");
         }
     }
     if (rank == 0) {
+        printf("Rank 0: \n");
         print_transmit_information(tokens_h, indices_h, localTokens, hiddenDim, expertsPerToken);
     }
+
 
     // Device buffers
     DeviceBuffer<uint32_t> tokens_d(tokens_h);
@@ -54,9 +63,10 @@ void testDispatch(
         world_size,
         localTokens,
         hiddenDim,
+        hiddenDimBytes,
         numExperts,
-        expertsPerToken
-        // localTokens * world_size, // maxNumTokens
+        expertsPerToken,
+        maxNumTokens
     );
 
     allToAllIntranode.dispatch(
