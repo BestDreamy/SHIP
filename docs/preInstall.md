@@ -37,6 +37,7 @@ docker run -it --runtime=nvidia --name=wbc_pplx   --privileged --gpus all --shm-
 --network=host \
 --device /dev/infiniband \
 -v /usr/lib/mlnx-ofed:/usr/lib/mlnx-ofed:ro \
+-v ~/work/:/root/work \
 nvcr.io/nvidia/pytorch:24.10-py3
 ```
 
