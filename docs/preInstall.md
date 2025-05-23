@@ -31,7 +31,7 @@ gdrcopy_copybw
 ```
 ${CUDA_DEVICE_DRIVER}=570.124.06
 
-docker run -it --runtime=nvidia --name=wbc_pplx   --privileged --gpus 4,5,6,7 --env CUDA_VISIBLE_DEVICES=4,5,6,7 --shm-size=32G \
+docker run -it --runtime=nvidia --name=wbc_pplx   --privileged --gpus all --shm-size=32G \
 -v /usr/src/nvidia-570.124.06:/usr/src/nvidia-570.124.06 \
 --device=/dev/gdrdrv \
 --network=host \
