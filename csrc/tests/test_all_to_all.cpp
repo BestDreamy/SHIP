@@ -82,8 +82,8 @@ int main(int argc, char **argv) {
     int my_pe = nvshmem_my_pe();
     int n_pes = nvshmem_n_pes();
 
-    int device = my_pe % 8;
-    cudaSetDevice(device);
+    int deviceId = my_pe % 8;
+    cudaSetDevice(deviceId);
 
     testDispatch(my_pe, n_pes);
 

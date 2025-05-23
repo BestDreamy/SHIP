@@ -24,11 +24,11 @@ CPP_SRCS := $(shell find $(abspath $(SRC_DIR)) -name "*.cpp")
 CU_OBJS := $(patsubst $(SRC_DIR)/%.cu,$(BUILD_DIR)/%.cu.o,$(CU_SRCS))
 CPP_OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.cpp.o,$(CPP_SRCS))
 
-CFLAGS := -I$(INC_DIR) -I${NVSHMEM_HOME}/include
+CFLAGS := -I$(INC_DIR) -I${NVSHMEM_HOME}/include -I${CUDA_HOME}/include
 NVCC_FLAGS := -x cu -rdc=true -ccbin $(CC) -gencode=$(NVCC_GENCODE)
-LDFLAGS := -L${NVSHMEM_HOME}/lib -lnvshmem -lnvidia-ml -lcuda -lcudart
+LDFLAGS := -L${NVSHMEM_HOME}/lib -L${CUDA_HOME}/lib -lnvshmem -lnvidia-ml -lcuda -lcudart
 
-# 主目标
+
 all: prepare test_all_to_all
 
 prepare:
@@ -45,6 +45,9 @@ test_all_to_all: $(CU_OBJS) $(CPP_OBJS)
 
 run:
 	nvshmrun -np 4 ./test_all_to_all
+
+nsys:
+	nsys profile -t cuda,nvtx,oshmem -o intranode_dispatch --gpu-metrics-devices=all nvshmrun -np 4 ./test_all_to_all
 
 clean:
 	rm -rf $(BUILD_DIR) test_all_to_all

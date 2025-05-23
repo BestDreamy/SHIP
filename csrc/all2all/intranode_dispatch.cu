@@ -158,5 +158,4 @@ void AllToAllIntraNode::dispatch (
 		printf("numTokensBuffer_h[%d] = %lu\n", i, numTokensBuffer_h[i]);
 	}
 	delete[] numTokensBuffer_h;
-
 }
