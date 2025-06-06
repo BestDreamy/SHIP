@@ -3,8 +3,13 @@
 #include <math.h>
 #include <stdio.h>
 #include "../include/cuda_utils.h"
+#include <cooperative_groups.h>
 
 using namespace ship;
+
+using cooperative_groups cg;
+
+__device__ float clockRate_d;
 
 template <bool isSend, bool isRecv>
 __global__ void dispatchKernel (
@@ -57,22 +62,19 @@ __global__ void dispatchKernel (
 				}
 			}
 		// warp0-8 are responsible for sending tokens to the local experts.
-		} /* else {
+		} else {
 			const unsigned numGroupWarps = NUM_WARPS - 1;
 			const unsigned numGroupThreads = numGroupWarps * WARP_SIZE;
 			for (unsigned i = 0; i < localTokens; i++) {
 				// If the token is assigned to this block, handle it.
-				if (i % gridDim.x == blockIdx.x) {
+				// Each block handles one token.
+ 				if (i % gridDim.x == blockIdx.x) {
 	
-					// Send the token to the other ranks, one send per warp.
-					for (unsigned j = warpId; j < expertsPerToken; j += numGroupWarps) {
+					 for (unsigned j = warpId; j < expertsPerToken; j += numGroupWarps) {
+						// Each warp in block transmit the token to one expert.
 						const uint32_t dstExpert = __ldg(indices + i * expertsPerToken + j);
 						const uint32_t dstRank = dstExpert / numLocalExperts;
 						const uint32_t dstLocalExpert = dstExpert % numLocalExperts;
-	
-						const uint32_t index = tokenIndex[dstExpert];
-						const uint32_t group = dstLocalExpert * numDPGroups + dpGroup;
-						const unsigned loc = group * maxNumTokens + index;
 	
 						std::byte *destPointer = xBufferOut + loc * tokenStride;
 						nvshmemx_putmem_signal_nbi_warp(
@@ -86,15 +88,10 @@ __global__ void dispatchKernel (
 						);
 					}
 				}
-		
-				// Replicate the token count calculation across all blocks.
-				if (warpId == 0 && laneId < numExpertsPerToken) {
-					uint32_t dstExpert = __ldg(&indices[i * numExpertsPerToken + laneId]);
-					tokenIndex[dstExpert]++;
-				}
-			}
+			} 
 		}
-		*/
+
+		if (isRecv) cg::this_grid.sync();
 	}
 
 	if constexpr (isRecv) {
@@ -115,7 +112,8 @@ __global__ void dispatchKernel (
 
 void AllToAllIntraNode::dispatch (
 	const Stride1D<uint32_t> &tokens_d,
-	const Stride2D<uint32_t> &indices_d
+	const Stride2D<uint32_t> &indices_d,
+	std::ofstream &logFile
 ) {
 	constexpr unsigned NUM_WRAPS = 10;
 	constexpr unsigned numThreadsperBlock = 32 * NUM_WRAPS;
@@ -154,8 +152,13 @@ void AllToAllIntraNode::dispatch (
 		numLocalExperts * world_size * sizeof(uint64_t),
 		cudaMemcpyDeviceToHost
 	);
-	for (int i = 0; i < numLocalExperts * world_size; i++) {
-		printf("numTokensBuffer_h[%d] = %lu\n", i, numTokensBuffer_h[i]);
+	for (int i = 0; i < numLocalExperts; i++) {
+		for (int j = 0; j < world_size; j++) {
+			if (numTokensBuffer_h[i * world_size + j] == 1) continue;
+
+			int idxExpert = rank * numLocalExperts + i;
+			logFile << "Expert " << idxExpert << ": reveive " << numTokensBuffer_h[i * world_size + j] - 1 << " tokens.\n";
+		}
 	}
 	delete[] numTokensBuffer_h;
 }

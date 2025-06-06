@@ -21,26 +21,26 @@ BUILD_DIR := ../build
 CU_SRCS := $(shell find $(abspath $(SRC_DIR)) -name "*.cu")
 CPP_SRCS := $(shell find $(abspath $(SRC_DIR)) -name "*.cpp")
 
-CU_OBJS := $(patsubst $(SRC_DIR)/%.cu,$(BUILD_DIR)/%.cu.o,$(CU_SRCS))
-CPP_OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.cpp.o,$(CPP_SRCS))
+# CU_OBJS := $(patsubst $(SRC_DIR)/%.cu,$(BUILD_DIR)/%.cu.o,$(CU_SRCS))
+# CPP_OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.cpp.o,$(CPP_SRCS))
 
 CFLAGS := -I$(INC_DIR) -I${NVSHMEM_HOME}/include -I${CUDA_HOME}/include
 NVCC_FLAGS := -x cu -rdc=true -ccbin $(CC) -gencode=$(NVCC_GENCODE)
 LDFLAGS := -L${NVSHMEM_HOME}/lib -L${CUDA_HOME}/lib -lnvshmem -lnvidia-ml -lcuda -lcudart
 
 
-all: prepare test_all_to_all
+all: test_all_to_all
 
 prepare:
 	mkdir -p $(BUILD_DIR)/all2all
 
-$(BUILD_DIR)/%.cu.o: $(SRC_DIR)/%.cu
-	$(NVCC) $(NVCC_FLAGS) $(CFLAGS) -c $< -o $@
+# $(BUILD_DIR)/%.cu.o: $(SRC_DIR)/%.cu
+# 	$(NVCC) $(NVCC_FLAGS) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp
-	$(CC) $(CFLAGS) -c $< -o $@
+# $(BUILD_DIR)/%.cpp.o: $(SRC_DIR)/%.cpp
+# 	$(CC) $(CFLAGS) -c $< -o $@
 
-test_all_to_all: $(CU_OBJS) $(CPP_OBJS)
+test_all_to_all: $(CPP_SRCS) $(CU_SRCS)
 	$(NVCC) $(NVCC_FLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 run:

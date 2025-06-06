@@ -6,6 +6,7 @@
 #include <nvshmem.h>
 #include <cuda_runtime.h>
 #include <../include/api.h>
+#include <fstream>
 
 namespace {
     template <typename T> T *mallocZeroBuffer(size_t size) {
@@ -77,7 +78,8 @@ namespace ship {
 
         void dispatch(
             const Stride1D<uint32_t> &tokens_d,
-	        const Stride2D<uint32_t> &indices_d
+	        const Stride2D<uint32_t> &indices_d,
+            std::ofstream &logFile
         );
     };
 }

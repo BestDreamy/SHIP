@@ -5,6 +5,7 @@
 #include <vector>
 #include <assert.h>
 #include <stdio.h>
+#include <fstream>
 
 #define RESET_TXT "\033[0m"
 #define RED_TXT "\033[1;31m"
@@ -60,21 +61,23 @@ inline void print_transmit_information (
     const std::vector<uint32_t> &indices_h,
     uint32_t localTokens,
     uint32_t hiddenDim,
-    uint32_t expertsPerToken
+    uint32_t expertsPerToken,
+    unsigned rank,
+    std::ofstream &logFile
 ) {
     for (int i = 0; i < localTokens; i ++) {
-        std::cout << "Token " << i << ": ";
+        logFile << "Token " << i << ": ";
         for (int j = 0; j < hiddenDim; j ++) {
-            std::cout << tokens_h[i * hiddenDim + j] << " ";
+            logFile << tokens_h[i * hiddenDim + j] << " ";
         }
-        std::cout << "\n";
+        logFile << "\n";
     }
     for (int i = 0; i < localTokens; i ++) {
-        std::cout << "Token " << i << " will tranmit to expert: ";
+        logFile << "Token " << i << " will tranmit to expert: ";
         for (int j = 0; j < expertsPerToken; j ++) {
-            std::cout << indices_h[i * expertsPerToken + j] << " ";
+            logFile << indices_h[i * expertsPerToken + j] << " ";
         }
-        std::cout << "\n";
+        logFile << "\n";
     }
 }
 

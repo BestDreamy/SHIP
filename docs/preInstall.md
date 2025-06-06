@@ -88,19 +88,18 @@ cd build
 cmake \
     -DNVSHMEM_PREFIX=/opt/nvshmem-3.2.5 \
     -DCMAKE_CUDA_ARCHITECTURES=90a \
-    -DNVSHMEM_MPI_SUPPORT=0 \
+    -DNVSHMEM_MPI_SUPPORT=1 \
     -DNVSHMEM_PMIX_SUPPORT=0 \
     -DNVSHMEM_LIBFABRIC_SUPPORT=0 \
     -DNVSHMEM_IBRC_SUPPORT=1 \
     -DNVSHMEM_IBGDA_SUPPORT=1 \
-    -DNVSHMEM_BUILD_TESTS=1 \
-    -DNVSHMEM_BUILD_EXAMPLES=1 \
     -DNVSHMEM_BUILD_HYDRA_LAUNCHER=1 \
     -DNVSHMEM_BUILD_TXZ_PACKAGE=1 \
+    -DMPI_HOME=/opt/hpcx/ompi \
     -DGDRCOPY_HOME=/root/gdrdrv-2.4.4 \
     -G Ninja \
     ..
-ninja build # error: can ignore?
+ninja
 ninja install
   
 # CUDA_HOME=/usr/local/cuda \
@@ -120,6 +119,14 @@ ninja install
 # make install
 ```
 ```
+export MPI_HOME=/opt/hpcx/ompi
+export NVSHMEM_MPI_SUPPORT=1
+
+export HPCX_HOME=/opt/hpcx
+export PATH=$HPCX_HOME/ompi/bin:$HPCX_HOME/ucx/bin:$PATH
+export LD_LIBRARY_PATH=$HPCX_HOME/ompi/lib:$HPCX_HOME/ucx/lib:$LD_LIBRARY_PATH
+export CPATH=$HPCX_HOME/ompi/include:$HPCX_HOME/ucx/include:$CPATH
+
 export NVSHMEM_HOME=/opt/nvshmem-3.2.5
 export LD_LIBRARY_PATH="${NVSHMEM_HOME}/lib:$LD_LIBRARY_PATH"
 export PATH="${NVSHMEM_HOME}/bin:$PATH"

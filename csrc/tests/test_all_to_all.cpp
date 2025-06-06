@@ -10,6 +10,7 @@
 #include "../all2all/intranode.h"
 #include <assert.h>
 #include "../include/api.h"
+#include <fstream>
 
 using namespace ship;
 
@@ -20,25 +21,26 @@ void testDispatch(
     uint32_t localTokens = 4,
     uint32_t hiddenDim = 16,
     uint32_t numExperts = 8,
-    uint32_t expertsPerToken = 3,
+    uint32_t expertsPerToken = 2,
     uint32_t maxNumTokens = 10
 ) {
+    Assert(numExperts / world_size == expertsPerToken, "Just for test, rank[i] and rank[i+1] buterfly transfer the same token");
     std::vector<uint32_t> tokens_h(localTokens * hiddenDim, rank); // All elements initialized to rank
     std::vector<uint32_t> indices_h(localTokens * expertsPerToken, 0);
     uint32_t numLocalExperts = numExperts / world_size;
     assert(numExperts % world_size == 0);
 
-    if (rank == 0) {
-        std::cout << "Total ranks: " << world_size << "\n";
-        std::cout << "Each rank will transfer tokens num: " << localTokens << "\n";
-        std::cout << "Each rank have experts num: " << numLocalExperts << "\n";
-        std::cout << "Each token have experts num: " << expertsPerToken << "\n";
-    }
+    std::ofstream logFile("rank_" + std::to_string(rank) + ".log");
+    logFile << "Total ranks: " << world_size << "\n";
+    logFile << "Each rank will transfer tokens num: " << localTokens << "\n";
+    logFile << "Each rank have experts num: " << numLocalExperts << "\n";
+    logFile << "Each token have experts num: " << expertsPerToken << "\n";
+
     for (int i = 0; i < localTokens; i ++) {
         // For each token, assign it to other rank
         for (int j = 0; j < expertsPerToken; j ++) {
-            // indices_h[i * expertsPerToken + j] = (++ numLocalExperts) % numExperts;
-            indices_h[i * expertsPerToken + j] = j;
+            // indices_h[i * expertsPerToken + j] = j;
+            indices_h[i * expertsPerToken + j] = (rank ^ 0x1) * numLocalExperts + j;
         }
     }
     for (int i = 0; i < localTokens; i ++) {
@@ -46,10 +48,8 @@ void testDispatch(
             Assert(indices_h[i * expertsPerToken] != indices_h[i * expertsPerToken + j], "The same token should not be assigned to the same expert");
         }
     }
-    if (rank == 0) {
-        printf("Rank 0: \n");
-        print_transmit_information(tokens_h, indices_h, localTokens, hiddenDim, expertsPerToken);
-    }
+        
+    print_transmit_information(tokens_h, indices_h, localTokens, hiddenDim, expertsPerToken, rank, logFile);
 
 
     // Device buffers
@@ -69,9 +69,12 @@ void testDispatch(
         maxNumTokens
     );
 
+    logFile << "\n\n\n--------------Dispatch start----------------\n\n\n";
+
     allToAllIntranode.dispatch(
         Stride1D<uint32_t>(tokens_d, hiddenDim),
-        Stride2D<uint32_t>(indices_d, 1, expertsPerToken)
+        Stride2D<uint32_t>(indices_d, 1, expertsPerToken),
+        logFile
     );
 
 }
