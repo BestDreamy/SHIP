@@ -56,7 +56,7 @@ void testDispatch(
     DeviceBuffer<uint32_t> tokens_d(tokens_h);
     DeviceBuffer<uint32_t> indices_d(indices_h);
 
-    const uint32_t hiddenDimBytes = hiddenDim * sizeof(uint32_t);
+    const uint32_t hiddenDimBytes = hiddenDim * sizeof(tokens_d[0]);
 
     AllToAllIntraNode allToAllIntranode(
         rank,

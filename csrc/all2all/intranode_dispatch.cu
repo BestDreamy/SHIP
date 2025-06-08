@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "../include/cuda_utils.h"
 #include <cooperative_groups.h>
+#include <sys/types.h>
 
 using namespace ship;
 
@@ -15,11 +16,16 @@ template <bool isSend, bool isRecv>
 __global__ void dispatchKernel (
 	uint32_t rank,
 	uint32_t localTokens,
+	uint32_t hiddenDim,
+	uint32_t hiddenDimBytes,
 	uint32_t numLocalExperts,
 	uint32_t expertsPerToken,
 	uint32_t worldSize,
 	uint32_t numExperts,
+	uint32_t maxNumTokens,
+
 	uint64_t *numTokensBuffer,
+	uint64_t *numRecvBuffer,
 
 	uint32_t *tokens,
 	uint32_t tokenElemStride,
@@ -33,7 +39,17 @@ __global__ void dispatchKernel (
 	const unsigned warpId = threadIdx.x / WARP_SIZE;
 	const unsigned laneId = threadIdx.x % WARP_SIZE;
 
+	const unsigned tokenDim = hiddenDim;
+	const unsigned tokenDimBytes = hiddenDimBytes;
+
 	if constexpr (isSend) {
+		// tokenIndex[i] identifies the number of tokens have assigned to the local expert i just in this rank.
+		__shared__ uint32_t tokenIndex[numExperts];
+		for (uint32_t i = threadIdx.x; i < numExperts; i += blockDim.x) {
+			tokenIndex[i] = 0;
+		}
+		__syncthreads();
+
 		// Dispatch tokens to the local experts.
 		// warp9 counts the number of tokens assigned to each expert.
 		if (warpId == NUM_WARPS - 1) {
@@ -69,24 +85,26 @@ __global__ void dispatchKernel (
 				// If the token is assigned to this block, handle it.
 				// Each block handles one token.
  				if (i % gridDim.x == blockIdx.x) {
-	
 					 for (unsigned j = warpId; j < expertsPerToken; j += numGroupWarps) {
 						// Each warp in block transmit the token to one expert.
 						const uint32_t dstExpert = __ldg(indices + i * expertsPerToken + j);
 						const uint32_t dstRank = dstExpert / numLocalExperts;
 						const uint32_t dstLocalExpert = dstExpert % numLocalExperts;
 	
-						std::byte *destPointer = xBufferOut + loc * tokenStride;
 						nvshmemx_putmem_signal_nbi_warp(
-							destPointer,
-							xInPtr,
-							tokenStride,
-							&numRecvBuffer[group],
+							,
+							tokens + i * tokenDimBytes,
+							tokenDimBytes,
+							numRecvBuffer + dstLocalExpert * worldSize + rank,
 							1,
 							NVSHMEM_SIGNAL_ADD,
 							dstRank
 						);
 					}
+				}
+				if (warpId == 0 && laneId < numExpertsPerToken) {
+					uint32_t dstExpert = __ldg(&indices[i * numExpertsPerToken + laneId]);
+					tokenIndex[dstExpert]++;
 				}
 			} 
 		}
@@ -102,11 +120,22 @@ __global__ void dispatchKernel (
 
 			// Wait for the token count to be set.
 			nvshmem_uint64_wait_until(
-				numTokensBuffer + srcLocalExpert * worldSize + srcRank,
+				numTokensBuffer + i,
 				NVSHMEM_CMP_NE,
 			    0
 			);
+			uint64_t numTokens = numTokensBuffer[i] - 1;
+			nvshmem_uint64_wait_until(
+				numRecvBuffer + i, 
+				NVSHMEM_CMP_EQ, 
+				numTokens
+			);
+
+			// Clean the buffers.
+			numTokensBuffer[slot] = 0;
+			numRecvBuffer[slot] = 0;
 		}
+		cg::this_grid.sync();
 	}
 }
 
@@ -125,11 +154,14 @@ void AllToAllIntraNode::dispatch (
 	void *args[] = {
 		const_cast<uint32_t*>(&rank),
 		const_cast<uint32_t*>(&localTokens),
+		const_cast<uint32_t*>(&hiddenDim),
+		const_cast<uint32_t*>(&hiddenDimBytes),
 		const_cast<uint32_t*>(&numLocalExperts),
 		const_cast<uint32_t*>(&expertsPerToken),
 		const_cast<uint32_t*>(&world_size),
 		const_cast<uint32_t*>(&numExperts),
 		&numTokensBuffer,
+		&numDispatchRecvBuffer,
 		const_cast<uint32_t**>(&tokens_d.data),
 		const_cast<size_t*>(&tokens_d.strideElem),
 		const_cast<uint32_t**>(&indices_d.data),

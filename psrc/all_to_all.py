@@ -10,8 +10,6 @@ class AllToAll:
         hidden_dim_bytes: int,
         hidden_dim_scale_bytes: int,
     ) -> None:
-        assert world_size % dp_size == 0
-        assert world_size // dp_size > 1
 
         self.world_size = world_size
         # self.dp_size = dp_size
