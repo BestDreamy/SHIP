@@ -25,7 +25,7 @@ void testDispatch(
     uint32_t maxNumTokens = 10
 ) {
     Assert(numExperts / world_size == expertsPerToken, "Just for test, rank[i] and rank[i+1] buterfly transfer the same token");
-    std::vector<uint32_t> tokens_h(localTokens * hiddenDim, rank); // All elements initialized to rank
+    std::vector<uint32_t> tokens_h(localTokens * hiddenDim, rank + 10); // All elements initialized to rank
     std::vector<uint32_t> indices_h(localTokens * expertsPerToken, 0);
     uint32_t numLocalExperts = numExperts / world_size;
     assert(numExperts % world_size == 0);
@@ -56,7 +56,7 @@ void testDispatch(
     DeviceBuffer<uint32_t> tokens_d(tokens_h);
     DeviceBuffer<uint32_t> indices_d(indices_h);
 
-    const uint32_t hiddenDimBytes = hiddenDim * sizeof(tokens_d[0]);
+    const uint32_t hiddenDimBytes = hiddenDim * sizeof(tokens_d.get()[0]);
 
     AllToAllIntraNode allToAllIntranode(
         rank,

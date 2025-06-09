@@ -29,7 +29,7 @@ NVCC_FLAGS := -x cu -rdc=true -ccbin $(CC) -gencode=$(NVCC_GENCODE)
 LDFLAGS := -L${NVSHMEM_HOME}/lib -L${CUDA_HOME}/lib -lnvshmem -lnvidia-ml -lcuda -lcudart
 
 
-all: test_all_to_all
+all: test_all_to_all run
 
 prepare:
 	mkdir -p $(BUILD_DIR)/all2all

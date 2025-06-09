@@ -8,7 +8,7 @@
 
 using namespace ship;
 
-using cooperative_groups cg;
+namespace cg = cooperative_groups;
 
 __device__ float clockRate_d;
 
@@ -26,6 +26,7 @@ __global__ void dispatchKernel (
 
 	uint64_t *numTokensBuffer,
 	uint64_t *numRecvBuffer,
+	std::byte *xDispatchOut,
 
 	uint32_t *tokens,
 	uint32_t tokenElemStride,
@@ -39,16 +40,16 @@ __global__ void dispatchKernel (
 	const unsigned warpId = threadIdx.x / WARP_SIZE;
 	const unsigned laneId = threadIdx.x % WARP_SIZE;
 
-	const unsigned tokenDim = hiddenDim;
-	const unsigned tokenDimBytes = hiddenDimBytes;
+	const unsigned tokenDim = hiddenDimBytes;
 
 	if constexpr (isSend) {
 		// tokenIndex[i] identifies the number of tokens have assigned to the local expert i just in this rank.
-		__shared__ uint32_t tokenIndex[numExperts];
+		extern __shared__ uint32_t tokenIndex[];
 		for (uint32_t i = threadIdx.x; i < numExperts; i += blockDim.x) {
 			tokenIndex[i] = 0;
 		}
 		__syncthreads();
+
 
 		// Dispatch tokens to the local experts.
 		// warp9 counts the number of tokens assigned to each expert.
@@ -69,8 +70,11 @@ __global__ void dispatchKernel (
 				if (laneId == 0) {
 					// printf("Dispatch dstRank %d, dstExpert %d, dstExpertCount %d\n", dstRank, dstLocalExpert, dstExpertCountSum);
 					nvshmemx_signal_op(
-						// numTokensBuffer + dstLocalExpert + dstRank * numLocalExperts,
-						numTokensBuffer + dstLocalExpert * worldSize + rank,
+						// numTokenBuffer[i][j]: rank(i) transfer dstExpertCountSum tokens to dstRank.
+						// Because numTokenBuffer's size is worldSize * numLocalExperts,
+						// only the whole row of numTokenBuffer[rank][numLocalExperts] can be chosen when this PE=rank.
+						numTokensBuffer + dstLocalExpert + rank * numLocalExperts,
+						// numTokensBuffer + dstLocalExpert * worldSize + rank,
 						dstExpertCountSum + 1,
 						NVSHMEM_SIGNAL_SET,
 						dstRank
@@ -82,8 +86,17 @@ __global__ void dispatchKernel (
 			const unsigned numGroupWarps = NUM_WARPS - 1;
 			const unsigned numGroupThreads = numGroupWarps * WARP_SIZE;
 			for (unsigned i = 0; i < localTokens; i++) {
-				// If the token is assigned to this block, handle it.
-				// Each block handles one token.
+				// For each token, in order to be saw by all blocks,
+				// though only one block transmit this token, each block should count it.
+				if (warpId == 0 && laneId < expertsPerToken) {
+					uint32_t dstExpert = __ldg(&indices[i * expertsPerToken + laneId]);
+					tokenIndex[dstExpert]++;
+				}
+
+				// Synchronize the warps within this warp group.
+          		asm volatile("bar.sync 1, %0;" ::"r"(numGroupThreads));
+
+				// If the token is assigned to this block, handle it. (Each block handles one token)
  				if (i % gridDim.x == blockIdx.x) {
 					 for (unsigned j = warpId; j < expertsPerToken; j += numGroupWarps) {
 						// Each warp in block transmit the token to one expert.
@@ -91,25 +104,28 @@ __global__ void dispatchKernel (
 						const uint32_t dstRank = dstExpert / numLocalExperts;
 						const uint32_t dstLocalExpert = dstExpert % numLocalExperts;
 	
+						const uint32_t index = tokenIndex[dstExpert] - 1;
+
 						nvshmemx_putmem_signal_nbi_warp(
-							,
-							tokens + i * tokenDimBytes,
-							tokenDimBytes,
-							numRecvBuffer + dstLocalExpert * worldSize + rank,
+							// xDispatchOut[i][j][k]: rank(i) transfer token to expert(j) which in dstRank.
+							// Because each expert which in dstRank could receive maxNumTokens tokens,
+							// only the whole row of xDispatchOut[rank][dstLocalExpert][tokenIndex] can be chosen when this PE=rank.
+							xDispatchOut + ((dstLocalExpert + rank * numLocalExperts) * maxNumTokens + index) * tokenDim,
+							(std::byte *)tokens + i * tokenDim,
+							tokenDim, // num bytes
+							// numRecvBuffer same as numTokenBuffer.
+							numRecvBuffer + dstLocalExpert + rank * numLocalExperts,
 							1,
 							NVSHMEM_SIGNAL_ADD,
 							dstRank
 						);
 					}
 				}
-				if (warpId == 0 && laneId < numExpertsPerToken) {
-					uint32_t dstExpert = __ldg(&indices[i * numExpertsPerToken + laneId]);
-					tokenIndex[dstExpert]++;
-				}
+
 			} 
 		}
 
-		if (isRecv) cg::this_grid.sync();
+		if (isRecv) cg::this_grid().sync();
 	}
 
 	if constexpr (isRecv) {
@@ -132,10 +148,10 @@ __global__ void dispatchKernel (
 			);
 
 			// Clean the buffers.
-			numTokensBuffer[slot] = 0;
-			numRecvBuffer[slot] = 0;
+			// numTokensBuffer[i] = 0;
+			// numRecvBuffer[i] = 0;
 		}
-		cg::this_grid.sync();
+		cg::this_grid().sync();
 	}
 }
 
@@ -160,8 +176,10 @@ void AllToAllIntraNode::dispatch (
 		const_cast<uint32_t*>(&expertsPerToken),
 		const_cast<uint32_t*>(&world_size),
 		const_cast<uint32_t*>(&numExperts),
+		const_cast<uint32_t*>(&maxNumTokens),
 		&numTokensBuffer,
 		&numDispatchRecvBuffer,
+		&xDispatchOut,
 		const_cast<uint32_t**>(&tokens_d.data),
 		const_cast<size_t*>(&tokens_d.strideElem),
 		const_cast<uint32_t**>(&indices_d.data),
@@ -173,7 +191,8 @@ void AllToAllIntraNode::dispatch (
         (void *)&dispatchKernel<true, true>,
         dimGrid,
         dimBlock,
-        args
+        args,
+		sizeof(uint32_t) * numExperts
     );
 	cudaDeviceSynchronize();
 
@@ -184,13 +203,35 @@ void AllToAllIntraNode::dispatch (
 		numLocalExperts * world_size * sizeof(uint64_t),
 		cudaMemcpyDeviceToHost
 	);
-	for (int i = 0; i < numLocalExperts; i++) {
-		for (int j = 0; j < world_size; j++) {
-			if (numTokensBuffer_h[i * world_size + j] == 1) continue;
+	for (int i = 0; i < world_size; i++) {
+		for (int j = 0; j < numLocalExperts; j++) {
+			if (numTokensBuffer_h[i * numLocalExperts + j] == 1) continue;
 
-			int idxExpert = rank * numLocalExperts + i;
-			logFile << "Expert " << idxExpert << ": reveive " << numTokensBuffer_h[i * world_size + j] - 1 << " tokens.\n";
+			int idxExpert = rank * numLocalExperts + j;
+			logFile << "Expert " << idxExpert << ": reveive " << numTokensBuffer_h[i * numLocalExperts + j] - 1 << " tokens.\n";
 		}
 	}
 	delete[] numTokensBuffer_h;
+
+	std::byte *xDispatchOut_h = new std::byte[world_size * numLocalExperts * maxNumTokens * hiddenDimBytes];
+	cudaMemcpy(
+		xDispatchOut_h,
+		xDispatchOut,
+		world_size * numLocalExperts * maxNumTokens * hiddenDimBytes * sizeof(std::byte),
+		cudaMemcpyDeviceToHost
+	);
+	for (int i = 0; i < world_size; i++) {
+		for (int j = 0; j < numLocalExperts; j++) {
+			for (int k = 0; k < maxNumTokens; k++) {
+				int idxExpert = rank * numLocalExperts + j;
+				logFile << "Expert " << idxExpert << " reveive token from rank " << i << ": ";
+				for (int w = 0; w < hiddenDimBytes; w += 4) {
+					uint32_t val = *((uint32_t*)(xDispatchOut_h + i * numLocalExperts * maxNumTokens * hiddenDimBytes + j * maxNumTokens * hiddenDimBytes + k * hiddenDimBytes + w));
+					logFile << val << " ";
+				}
+				logFile << "\n";
+			}
+		}
+	}
+	delete[] xDispatchOut_h;
 }
