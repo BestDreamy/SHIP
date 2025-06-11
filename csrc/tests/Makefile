@@ -54,6 +54,7 @@ bench_all_to_all: $(BENCH_CPP_SRCS) $(CU_SRCS)
 run_test:
 	nvshmrun -np 4 ./test_all_to_all
 # NVSHMEM_REMOTE_TRANSPORT=none mpirun -np 4 --allow-run-as-root ./test_all_to_all
+# NVSHMEM_IB_ENABLE_IBGDA=1 NVSHMEM_DISABLE_P2P=1 mpirun -np 4 --allow-run-as-root ./test_all_to_all
 
 run_bench:
 	nvshmrun -np 4 ./bench_all_to_all

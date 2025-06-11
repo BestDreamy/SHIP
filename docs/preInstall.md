@@ -132,13 +132,23 @@ export LD_LIBRARY_PATH="${NVSHMEM_HOME}/lib:$LD_LIBRARY_PATH"
 export PATH="${NVSHMEM_HOME}/bin:$PATH"
 
 # For one node
-export NVSHMEM_REMOTE_TRANSPORT=none
+# export NVSHMEM_REMOTE_TRANSPORT=none
+
+# For multi node
+# export NVSHMEM_REMOTE_TRANSPORT=ibrc
+export NVSHMEM_IB_ENABLE_IBGDA=1
+export NVSHMEM_DISABLE_P2P=1
+
+# nvshmem debug
+export NVSHMEM_DEBUG=INFO
+export NVSHMEM_DEBUG_FILE="ship_%h_%p.log"
 
 # For nvshmrun
 export HYDRA_HOME=/opt/hydra
 export PATH="${HYDRA_HOME}/bin:$PATH"
 export NVCC_GENCODE="arch=compute_90,code=sm_90a"
 ```
+
 Hydra
 ```
 cd nvshmem_src_3.2.5-1/nvshmem_src/
