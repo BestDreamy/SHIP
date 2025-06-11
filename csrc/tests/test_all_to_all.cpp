@@ -12,6 +12,10 @@
 #include "../include/api.h"
 #include <fstream>
 
+//#ifdef NVSHMEM_MPI_SUPPORT
+#include "mpi.h"
+// #endif
+
 using namespace ship;
 
 void testDispatch(
@@ -69,8 +73,6 @@ void testDispatch(
         maxNumTokens
     );
 
-    logFile << "\n\n\n--------------Dispatch start----------------\n\n\n";
-
     allToAllIntranode.dispatch(
         Stride1D<uint32_t>(tokens_d, hiddenDim),
         Stride2D<uint32_t>(indices_d, 1, expertsPerToken),
@@ -80,16 +82,25 @@ void testDispatch(
 }
 
 int main(int argc, char **argv) {
-    nvshmem_init();
+    // int my_pe, n_pes;
 
+    // MPI_Init(&argc, &argv);
+    // MPI_Comm_rank(MPI_COMM_WORLD, &my_pe);
+    // MPI_Comm_size(MPI_COMM_WORLD, &n_pes);
+
+    // MPI_Finalize();
+    
+    // nvshmrun -np 4 ./test_all_to_all
+    nvshmem_init();
+    
     int my_pe = nvshmem_my_pe();
     int n_pes = nvshmem_n_pes();
-
-    int deviceId = my_pe % 8;
+    
+    int deviceId = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
     cudaSetDevice(deviceId);
-
+    
     testDispatch(my_pe, n_pes);
-
+    
     nvshmem_finalize();
 
     return 0;

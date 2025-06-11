@@ -11,5 +11,7 @@
 !.gitignore
 !setup.py
 *.log
+compile_commands.json
 test_all_to_all
+bench_all_to_all
 __pycache__

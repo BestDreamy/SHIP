@@ -82,7 +82,8 @@ __global__ void dispatchKernel (
 				}
 			}
 		// warp0-8 are responsible for sending tokens to the local experts.
-		} else {
+		} 
+		else {
 			const unsigned numGroupWarps = NUM_WARPS - 1;
 			const unsigned numGroupThreads = numGroupWarps * WARP_SIZE;
 			for (unsigned i = 0; i < localTokens; i++) {
@@ -128,12 +129,16 @@ __global__ void dispatchKernel (
 		if (isRecv) cg::this_grid().sync();
 	}
 
+	if (warpId == 0 and laneId == 0 and blockId == 0) {
+		printf("Token sent\n");
+	}
+
 	if constexpr (isRecv) {
 		for (int i = blockId * blockDim.x + threadIdx.x; i < numExperts; i += gridDim.x * blockDim.x) {
 			const uint32_t srcRank = i / numLocalExperts;
 			const uint32_t srcLocalExpert = i % numLocalExperts;
 			// const uint32_t dstLocalExpert = dstExpert % numLocalExperts;
-
+			
 			// Wait for the token count to be set.
 			nvshmem_uint64_wait_until(
 				numTokensBuffer + i,
@@ -142,16 +147,21 @@ __global__ void dispatchKernel (
 			);
 			uint64_t numTokens = numTokensBuffer[i] - 1;
 			nvshmem_uint64_wait_until(
-				numRecvBuffer + i, 
-				NVSHMEM_CMP_EQ, 
-				numTokens
+					numRecvBuffer + i, 
+					NVSHMEM_CMP_EQ, 
+					numTokens
 			);
-
-			// Clean the buffers.
+				
+			// Clean the buffers.(Just for test)
 			// numTokensBuffer[i] = 0;
 			// numRecvBuffer[i] = 0;
 		}
+
 		cg::this_grid().sync();
+	}
+
+	if (warpId == 0 and laneId == 0 and blockId == 0) {
+		printf("Token received\n");
 	}
 }
 
@@ -187,6 +197,8 @@ void AllToAllIntraNode::dispatch (
 		const_cast<size_t*>(&indices_d.strideRow)
 	};
 
+	logFile << "\n\n--------------Dispatch start----------------\n\n";
+
 	cudaLaunchCooperativeKernel(
         (void *)&dispatchKernel<true, true>,
         dimGrid,
@@ -195,7 +207,9 @@ void AllToAllIntraNode::dispatch (
 		sizeof(uint32_t) * numExperts
     );
 	cudaDeviceSynchronize();
+	printf("Dispatch kernel finished\n");
 
+	//////////////////////////////////////////////////////////////////////////////
 	uint64_t *numTokensBuffer_h = new uint64_t[numLocalExperts * world_size];
 	cudaMemcpy(
 		numTokensBuffer_h,
@@ -208,7 +222,7 @@ void AllToAllIntraNode::dispatch (
 			if (numTokensBuffer_h[i * numLocalExperts + j] == 1) continue;
 
 			int idxExpert = rank * numLocalExperts + j;
-			logFile << "Expert " << idxExpert << ": reveive " << numTokensBuffer_h[i * numLocalExperts + j] - 1 << " tokens.\n";
+			logFile << "Expert " << idxExpert << ": reveive " << numTokensBuffer_h[i * numLocalExperts + j] << " tokens.\n";
 		}
 	}
 	delete[] numTokensBuffer_h;
@@ -234,4 +248,7 @@ void AllToAllIntraNode::dispatch (
 		}
 	}
 	delete[] xDispatchOut_h;
+	//////////////////////////////////////////////////////////////////////////////
+
+	logFile << "\n\n--------------Dispatch  end-----------------\n\n";
 }

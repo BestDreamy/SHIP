@@ -32,7 +32,7 @@ namespace ship {
         uint32_t hiddenDimBytes; // The number of bytes for each token
         uint32_t numExperts;      // For the whole world
         uint32_t expertsPerToken; // The number of experts per token.
-        uint32_t maxNumTokens;    // Each rank be allowed to send maxNumTokens tokens
+        uint32_t maxNumTokens;    // Each rank be allowed to receive maxNumTokens tokens
         uint32_t numLocalExperts;
 
         AllToAllIntraNode(
