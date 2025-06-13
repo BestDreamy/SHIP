@@ -27,30 +27,30 @@ namespace ship {
     struct AllToAllIntraNode {
         uint32_t rank;
         uint32_t world_size;
-        uint32_t localTokens;
+        uint32_t numLocalTokens;
         uint32_t hiddenDim;
         uint32_t hiddenDimBytes; // The number of bytes for each token
         uint32_t numExperts;      // For the whole world
-        uint32_t expertsPerToken; // The number of experts per token.
+        uint32_t topk; // The number of experts per token.
         uint32_t maxNumTokens;    // Each rank be allowed to receive maxNumTokens tokens
         uint32_t numLocalExperts;
 
         AllToAllIntraNode(
             uint32_t rank = 0,
             uint32_t world_size = 4,
-            uint32_t localTokens = 4,
+            uint32_t numLocalTokens = 4,
             uint32_t hiddenDim = 512,
             uint32_t hiddenDimBytes = 4 * 512, // Each token's bytes
             uint32_t numExperts = 8,
-            uint32_t expertsPerToken = 3,
+            uint32_t topk = 3,
             uint32_t maxNumTokens = 10
         ): rank(rank),
         world_size(world_size),
-        localTokens(localTokens),
+        numLocalTokens(numLocalTokens),
         hiddenDim(hiddenDim),
         hiddenDimBytes(hiddenDimBytes),
         numExperts(numExperts),
-        expertsPerToken(expertsPerToken),
+        topk(topk),
         maxNumTokens(maxNumTokens)
         {
             Assert(numExperts % world_size == 0, "numExperts should be divisible by world_size");
@@ -85,6 +85,12 @@ namespace ship {
 	        const Stride2D<uint32_t> &indices_d,
             std::ofstream &logFile
         );
+
+        ~AllToAllIntraNode() {
+            nvshmem_free(numTokensBuffer);
+            nvshmem_free(numDispatchRecvBuffer);
+            nvshmem_free(xDispatchOut);
+        }
     };
 }
 

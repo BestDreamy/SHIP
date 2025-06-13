@@ -1,0 +1,165 @@
+#include <cstdint>
+#include <nvshmem.h>
+#include <nvshmemx.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cuda.h>
+#include <mpi.h>
+#include <iostream>
+using namespace std;
+
+#define NVSHMEMCHECK(stmt)                                                                         \
+  do {                                                                                             \
+    int result = (stmt);                                                                           \
+    if (NVSHMEMX_SUCCESS != result) {                                                              \
+      fprintf(stderr, "[%s:%d] nvshmem failed with error %d \n", __FILE__, __LINE__, result);      \
+      exit(-1);                                                                                    \
+    }                                                                                              \
+  } while (0)
+
+#define CUDACHECK(cmd)                                                                             \
+  do {                                                                                             \
+    cudaError_t e = cmd;                                                                           \
+    if (e != cudaSuccess) {                                                                        \
+      printf("Failed: Cuda error %s:%d '%s'\n", __FILE__, __LINE__, cudaGetErrorString(e));        \
+      exit(EXIT_FAILURE);                                                                          \
+    }                                                                                              \
+  } while (0)
+
+__global__ void communicate_kernel(int my_pe, int n_pes, int tokenDim, int maxNumTokens, 
+                                   std::byte* xDispatchOut, std::byte* tokens, uint64_t* numRecvBuffer) {
+    // 确定目标 PE：PE0 发往 PE1，PE1 发往 PE0
+    int dstRank = (my_pe == 0) ? 1 : 0;
+
+    // 计算源令牌地址 (当前 PE 的 tokens)
+    std::byte* srcToken = tokens;
+
+    // 计算目标缓冲区地址 (目标 PE 的 xDispatchOut)
+    int index = 0; // 令牌索引固定为 0
+    std::byte* dstPtr = xDispatchOut + index;
+
+    // 获取目标 PE 上 numRecvBuffer 的远程指针
+    uint64_t* remoteSignal = numRecvBuffer;
+
+    // 使用 Warp 聚合通信：复制数据并触发信号
+    nvshmemx_putmem_signal_nbi_warp(
+        dstPtr,              // 目标地址 (目标 PE)
+        srcToken,            // 源地址 (本地 tokens)
+        tokenDim,                // 每个线程传输 1 个元素
+
+        remoteSignal,        // 目标 PE 的信号地址
+        1,                    // 信号增加值 (+1)
+        NVSHMEM_SIGNAL_ADD, // 原子加操作
+        dstRank              // 目标 PE 编号
+    );
+}
+
+int main(int argc, char** argv) {
+    int rank, world_size;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+    MPI_Comm mpi_comm = MPI_COMM_WORLD;
+    nvshmemx_init_attr_t attr = NVSHMEMX_INIT_ATTR_INITIALIZER;
+    attr.mpi_comm = &mpi_comm;
+    nvshmemx_init_attr(NVSHMEMX_INIT_WITH_MPI_COMM, &attr);
+    int my_pe = nvshmem_my_pe();
+    int n_pes = nvshmem_n_pes();
+    assert(my_pe == rank);
+    assert(n_pes == world_size);
+
+    int deviceId = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
+    cudaSetDevice(deviceId);
+
+    // 参数设置
+    const int tokenDim = 128;       // 令牌维度
+    const int maxNumTokens = 1;     // 最大令牌数
+
+    // 分配对称内存
+    size_t tokensSize = tokenDim;
+    size_t xDispatchOutSize = maxNumTokens * tokenDim;
+    size_t signalSize = sizeof(uint64_t);
+
+    std::byte* tokens = nullptr; // (std::byte*)nvshmem_malloc(tokensSize);
+    cudaMalloc(&tokens, tokensSize);
+    std::byte* xDispatchOut = (std::byte*)nvshmem_malloc(xDispatchOutSize);
+    uint64_t* numRecvBuffer = (uint64_t*)nvshmem_malloc(signalSize);
+
+    // 初始化数据
+    CUDACHECK(cudaMemset(tokens, 1, tokensSize));
+    CUDACHECK(cudaMemset(xDispatchOut, 0, xDispatchOutSize));
+    CUDACHECK(cudaMemset(numRecvBuffer, 0, signalSize));
+
+    // 执行通信内核
+    dim3 blockDim(32); // 一个线程块，32 个线程 (一个 Warp=32 线程)
+    communicate_kernel<<<1, blockDim>>>(my_pe, n_pes, tokenDim, maxNumTokens, xDispatchOut, tokens, numRecvBuffer);
+    cudaDeviceSynchronize();
+
+    // 等待所有通信完成
+    nvshmem_barrier_all();
+    nvshmem_quiet();
+
+    // 验证结果
+    bool success = true;
+    int target_pe = (my_pe == 0) ? 1 : 0;
+    uint64_t* numRecvBuffer_h = new uint64_t[signalSize / sizeof(uint64_t)];
+    CUDACHECK(cudaMemcpy(numRecvBuffer_h, numRecvBuffer, signalSize, cudaMemcpyDeviceToHost));
+
+    // 检查信号值 (应为 1)
+    if (numRecvBuffer_h[0] != 1) {
+        printf("[PE %d] 错误: 预期信号值=1, 实际=%lu\n", my_pe, numRecvBuffer_h[0]);
+        success = false;
+    }
+
+    // 检查数据一致性
+    // for (int i = 0; i < tokenDim; i++) {
+    //     std::byte expected = target_pe * 1000 + i; // 目标 PE 的 tokens 数据
+    //     if (remote_xDispatchOut[i] != expected) {
+    //         printf("[PE %d] 错误: 位置 %d - 预期 %.2f, 实际 %.2f\n", 
+    //                my_pe, i, expected, remote_xDispatchOut[i]);
+    //         success = false;
+    //         break;
+    //     }
+    // }
+
+    if (success) {
+        printf("[PE %d] 验证成功! 收到来自 PE %d 的数据\n", my_pe, target_pe);
+        byte* xDispatchOut_h = new std::byte[xDispatchOutSize];
+        CUDACHECK(cudaMemcpy(xDispatchOut_h, xDispatchOut, xDispatchOutSize, cudaMemcpyDeviceToHost));
+        for (int i = 0; i < maxNumTokens * tokenDim; i++) {
+            std::byte expected = (my_pe == 0) ? std::byte(1) : std::byte(1);
+            if (xDispatchOut_h[i] != expected) {
+                // printf("[PE %d] 错误: 位置 %d - 预期 %.2f, 实际 %.2f\n", 
+                //        my_pe, i, expected, xDispatchOut_h[i]);
+                success = false;
+                break;
+            }
+            // printf("[PE %d] xDispatchOut[%d] = %d\n", my_pe, i, static_cast<int>(xDispatchOut_h[i]));
+        }
+    }
+
+    // 清理资源
+    cudaFree(tokens);
+    // nvshmem_free(tokens);
+    nvshmem_free(xDispatchOut);
+    nvshmem_free(numRecvBuffer);
+    nvshmem_finalize();
+    MPI_Finalize();
+    return 0;
+}
+
+/*
+nvcc -x cu -rdc=true -ccbin g++ -gencode=${NVCC_GENCODE} \
+-I${NVSHMEM_HOME}/include -I${CUDA_HOME}/include -I${MPI_HOME}/include \
+-lnvshmem_host -lnvshmem_device -lcuda -lcudart -L${NVSHMEM_HOME}/lib -L${MPI_HOME}/lib -lmpi \
+-o nvshmem_test nvshmem_test.cu
+*/
+
+/*
+rm nvshmem_test
+
+NVSHMEM_REMOTE_TRANSPORT=none mpirun -np 2 --allow-run-as-root ./nvshmem_test
+NVSHMEM_IB_ENABLE_IBGDA=1 NVSHMEM_DISABLE_P2P=1 mpirun -np 2 --allow-run-as-root ./nvshmem_test
+*/

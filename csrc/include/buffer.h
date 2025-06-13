@@ -17,7 +17,7 @@ namespace ship {
         HostBuffer(const std::vector<T> &a) {
             size = a.size();
             cudaMallocHost(&data, size * sizeof(T));
-            cudaMemcpy(data, a.data(), size * sizeof(T), cudaMemcpyHostToDevice);
+            cudaMemcpy(data, a.data(), size * sizeof(T), cudaMemcpyDeviceToHost);
         }
 
         const T *get() const { return data; }

@@ -8,7 +8,6 @@
 # run:
 # 	nvshmrun -np 4 ./test_all_to_all
 
-
 CC := g++
 NVCC := nvcc
 NVCC_GENCODE ?= arch=compute_90,code=sm_90a
@@ -26,12 +25,22 @@ BENCH_CPP_SRCS := $(shell find $(abspath $(SRC_DIR)) -name "bench_all_to_all.cpp
 # CPP_OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.cpp.o,$(CPP_SRCS))
 
 CFLAGS := -I$(INC_DIR) -I${NVSHMEM_HOME}/include -I${CUDA_HOME}/include -std=c++17
-NVCC_FLAGS := -x cu -rdc=true -ccbin $(CC) -gencode=$(NVCC_GENCODE)
-LDFLAGS := -L${NVSHMEM_HOME}/lib -L${CUDA_HOME}/lib -lnvshmem -lnvidia-ml -lcuda -lcudart
+NVCC_FLAGS := -x cu -rdc=true -ccbin $(CC) -gencode=$(NVCC_GENCODE) --threads=32 --expt-relaxed-constexpr
+LDFLAGS := -L${NVSHMEM_HOME}/lib -L${CUDA_HOME}/lib -lnvshmem_host -lnvshmem_device -lcuda -lcudart
 
 # support for building with mpi
 CFLAGS += -I${MPI_HOME}/include
 LDFLAGS += -L${MPI_HOME}/lib -lmpi
+
+# support for building with dc
+# OBJS := $(CU_SRCS:.cu=.o) $(TEST_CPP_SRCS:.cpp=.o) 
+# # $(BENCH_CPP_SRCS:.cpp=.o)
+
+# %.o: %.cu
+# 	$(NVCC) -dc $(NVCC_FLAGS) $(CFLAGS) -c $< -o $@
+
+# %.o: %.cpp
+# 	$(CXX) $(CFLAGS) -c $< -o $@
 
 test: test_all_to_all run_test
 bench: bench_all_to_all run_bench
@@ -47,14 +56,17 @@ prepare:
 
 test_all_to_all: $(TEST_CPP_SRCS) $(CU_SRCS)
 	$(NVCC) $(NVCC_FLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+# test_all_to_all: $(OBJS)
+# 	$(NVCC) -dlink -gencode=$(NVCC_GENCODE) $(OBJS) -o $@.dlink.o $(LDFLAGS)
+# 	$(NVCC) -gencode=$(NVCC_GENCODE) $^ -o $@ $(LDFLAGS)
 
 bench_all_to_all: $(BENCH_CPP_SRCS) $(CU_SRCS)
 	$(NVCC) $(NVCC_FLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 run_test:
-	nvshmrun -np 4 ./test_all_to_all
+# nvshmrun -np 4 ./test_all_to_all
 # NVSHMEM_REMOTE_TRANSPORT=none mpirun -np 4 --allow-run-as-root ./test_all_to_all
-# NVSHMEM_IB_ENABLE_IBGDA=1 NVSHMEM_DISABLE_P2P=1 mpirun -np 4 --allow-run-as-root ./test_all_to_all
+	NVSHMEM_IB_ENABLE_IBGDA=1 NVSHMEM_DISABLE_P2P=1 mpirun -np 4 --allow-run-as-root ./test_all_to_all
 
 run_bench:
 	nvshmrun -np 4 ./bench_all_to_all
@@ -63,6 +75,6 @@ nsys:
 	nsys profile -t cuda,nvtx,oshmem -o intranode_dispatch --gpu-metrics-devices=all nvshmrun -np 4 ./test_all_to_all
 
 clean:
-	rm -rf $(BUILD_DIR) test_all_to_all *.log bench_all_to_all
+	rm -rf $(BUILD_DIR) test_all_to_all *.log bench_all_to_all *.o
 
 .PHONY: prepare clean test run_test nsys bench run_bench
